@@ -86,7 +86,7 @@ class Controller:
             raise RuntimeError("Oversized controller reply")
         return line.decode("ascii", errors="replace").strip()
 
-    def _status(self):
+    def _status(self, starting=False):
         self.port.write(b"?")
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:
@@ -107,6 +107,8 @@ class Controller:
                 self.report = report
                 self.report_time = time.monotonic()
                 return
+            if starting and line.startswith("Grbl"):
+                continue
             if line.startswith(("Grbl", "ALARM:")):
                 raise RuntimeError("Controller reset or alarm: " + line)
         raise RuntimeError("No current controller status; reconnect manually")
@@ -144,9 +146,11 @@ class Controller:
                 self.port = port
                 port.open()
                 # Startup output is not a command acknowledgment.
-                time.sleep(1)
+                # ESP32 boot output can arrive seconds after opening USB.
+                # This wait belongs only to explicit connection, never recovery.
+                time.sleep(4)
                 port.reset_input_buffer()
-                self._status()
+                self._status(starting=True)
                 if self.report["state"] != "Idle":
                     raise RuntimeError("Machine is not Idle; no commands sent")
                 self.info = self._line("$I")
