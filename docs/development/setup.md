@@ -79,6 +79,9 @@ automatically sourced: pass `--gpio` to the sensor command and use
 `CAMERA_INDEX=0 bash scripts/camera-snapshot.sh` for camera selection.
 
 Baseline test scripts do not start a persistent service, open a CNC port or reboot.
+The portal starts with CNC disconnected. At the machine, use Connect CNC only
+when idle and with the spindle off; opening USB may reset the controller.
+Manual controls and the first supervised test are in the operations guide.
 Reboot only after confirming the CNC is idle. For remote sudo, an operator can run installation
 locally; do not weaken sudo restrictions just to let an agent install packages.
 

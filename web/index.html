@@ -39,9 +39,9 @@
         <div class="tools">
           <section id="tool-move" role="tabpanel" aria-labelledby="tab-move" tabindex="0">
             <h3>Ręczne przesuwanie</h3>
-            <fieldset disabled data-manual><legend class="sr-only">Ruch osi — niedostępny</legend>
+            <fieldset disabled data-manual><legend class="sr-only">Ręczny ruch osi</legend>
               <div class="motion-settings">
-                <label>Krok<select id="jog-step"><option value="0.1">0,1 mm</option><option value="1" selected>1 mm</option><option value="10">10 mm</option></select></label>
+                <label>Krok<select id="jog-step"><option value="0.1" selected>0,1 mm</option><option value="1">1 mm</option><option value="10">10 mm</option></select></label>
                 <label>Prędkość · mm/min<input id="jog-feed" type="number" value="100" min="1" max="300"></label>
               </div>
               <div class="jog-controls">
@@ -61,7 +61,7 @@
           <section id="tool-zero" role="tabpanel" aria-labelledby="tab-zero" tabindex="0" hidden>
             <h3>Zero materiału</h3>
             <p class="hint">Wybrany przez Ciebie punkt odniesienia na materiale. Ustawienie będzie ręczne.</p>
-            <fieldset disabled data-manual><legend class="sr-only">Ustawianie zera — niedostępne</legend>
+            <fieldset disabled data-manual><legend class="sr-only">Ustawianie zera</legend>
               <div class="button-row"><button data-action="zero_xy" type="button">Zero X / Y</button><button data-action="zero_z" type="button">Zero Z</button></div>
             </fieldset>
           </section>
@@ -75,7 +75,7 @@
           </section>
           <section id="tool-spindle" role="tabpanel" aria-labelledby="tab-spindle" tabindex="0" hidden>
             <h3>Wrzeciono</h3><p class="hint">Moc to skala sterownika, nie odczyt obrotów.</p>
-            <fieldset disabled data-manual><legend class="sr-only">Wrzeciono — niedostępne</legend>
+            <fieldset disabled data-manual><legend class="sr-only">Sterowanie wrzecionem</legend>
               <label>Moc · 1–1000<input id="spindle-power" type="number" value="300" min="1" max="1000"></label><div class="button-row"><button data-action="spindle_on" type="button">Włącz</button><button data-action="spindle_off" type="button">Wyłącz</button></div>
             </fieldset>
           </section>

@@ -27,7 +27,7 @@ installation path and a fresh SD-card installation have not been exercised.
 The captured frame was almost uniform, so framing and useful scene detail are
 not validated. Aim the camera at the work area and repeat the image test.
 
-The monitoring implementation passes ten hardware-free unit tests. The service
+The integration passes nineteen hardware-free unit tests. The service
 has a fixed loopback backend, a shared MJPEG camera worker and five-second DHT22
 sampling. Tailscale Serve requires a privileged operator command on this host;
 see the setup guide. Acceptance verified fresh sensor data, JPEG snapshots and
@@ -35,7 +35,12 @@ multiple MJPEG frames locally. A workstation over Tailscale received HTTP 200
 for the dashboard and healthy status via the MagicDNS URL on port 8765.
 The numeric-IP URL returned 404; use the Serve hostname. Both the backend
 loopback bind and enabled user service/linger were checked. Boot recovery has
-not been tested with a reboot. No CNC serial connection was opened.
+not been tested with a reboot. The operator later authorized opening CNC USB
+while present, with the machine idle and spindle off. Read queries confirmed
+firmware `1.1h.20250722`, Idle, G54, millimetres, M5 and spindle scale 1000.
+The portal API connected successfully and the browser displayed live positions.
+No motion, material-zero or spindle operation was tested by the agent; these
+remain subject to supervised operator acceptance. File streaming stays disabled.
 
 The initial sensor experiment lives in `~/.local/share/cnc-monitor` on the first
 host. It is not needed by this project: the repository uses its own `.venv` and
@@ -47,6 +52,6 @@ report was firmware `1.1h.20250722`, 115200 baud. Limit switches and Z probe are
 not installed; homing, soft limits and hard limits were disabled. Do not copy
 controller settings or assumed travel limits to a replacement machine.
 Linux enumerates `usb-1a86_USB_Serial-if00-port0` under `/dev/serial/by-id`,
-pointing to `/dev/ttyUSB0`. It has not been opened or confirmed by a firmware
-query on this Pi. COM9 is a Windows name, not a Linux path. Confirm device
+pointing to `/dev/ttyUSB0`. Firmware identity was confirmed on this Pi.
+COM9 is a Windows name, not a Linux path. Confirm device
 identity before configuring any sender.
