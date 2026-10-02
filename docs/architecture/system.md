@@ -1,7 +1,7 @@
 # System boundaries
 
 The repository owns host setup and monitoring. The operator owns physical work.
-Solid arrows below represent implemented access; dotted links are planned.
+Solid arrows below represent implemented access. File streaming is pending.
 
 ```mermaid
 flowchart LR
@@ -14,9 +14,9 @@ flowchart LR
     SSH --> Scripts[Explicit repository checks]
     Scripts --> Camera[Camera Rev 1.3]
     Scripts --> DHT[DHT22 GPIO17]
-    Operator[Local operator] -.-> Panel[Future CNC panel]
-    Panel -.-> USB[Single USB connection owner]
-    USB -.-> CNC[TTC3018 controller]
+    Operator[Local operator] --> Monitor
+    Monitor --> USB[Explicit single USB connection owner]
+    USB --> CNC[TTC3018 controller]
 ```
 
 Implemented: setup script, version-locked Python environment, host diagnostics,
@@ -35,11 +35,14 @@ There is no external web dependency, analytics, continuous disk recording or
 historical sensor database. Latest values and one latest frame are held in memory.
 
 Read-only application programming interface (API): `/api/status` and `/camera.jpg`.
-No camera restart, GPIO selection, serial connection or machine command can be
-requested over HTTP. Snapshot access uses the existing camera worker.
+Snapshot access uses the existing camera worker. Manual operator actions use
+POST `/api/cnc/action` with a per-process cross-site request protection token.
+USB opens only after explicit connection, never at service startup. One lock
+serializes all controller I/O. Status is cached; stale positions are unavailable.
 
-Pending: CNC sender, CNC operator panel and CNC agent integration. Monitoring
-status explicitly reports CNC as not connected; USB enumeration is not a session.
+Pending: file sender and dedicated read-only CNC agent integration.
+A service restart closes USB but does not promise to stop the spindle. Restart
+only with the machine idle and spindle physically confirmed off.
 
 Future agent access should favor compact structured status and on-demand images.
 The operator can watch continuous video without sending each frame to a model.

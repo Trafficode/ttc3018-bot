@@ -106,6 +106,20 @@ class HttpTests(unittest.TestCase):
             urlopen(request, timeout=2)
         self.assertEqual(error.exception.code, 501)
 
+    def test_control_requires_token_and_rejects_unknown_actions(self):
+        request = Request(
+            self.url + "/api/cnc/action", data=b'{"action":"home"}',
+            headers={"Content-Type": "application/json"},
+        )
+        with self.assertRaises(HTTPError) as error:
+            urlopen(request, timeout=2)
+        self.assertEqual(error.exception.code, 403)
+        request.add_header("X-PiloMill-Token", self.server.control_token)
+        with self.assertRaises(HTTPError) as error:
+            urlopen(request, timeout=2)
+        self.assertEqual(error.exception.code, 400)
+        self.assertIsNone(self.server.cnc.port)
+
     def test_snapshot_is_unavailable_until_fresh(self):
         with self.assertRaises(HTTPError) as error:
             urlopen(self.url + "/camera.jpg", timeout=2)

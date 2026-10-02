@@ -9,7 +9,8 @@ DHT22 on GPIO17 and private Tailscale access.
 - [Verified hardware and software](docs/reference/baseline.md)
 - [System boundaries and next components](docs/architecture/system.md)
 
-The repository does not start or control the CNC machine. A loopback monitoring
-service provides live camera video, DHT22 telemetry and read-only status/snapshot
-endpoints through private Tailscale Serve. A CNC operator panel and CNC agent
-integration are not implemented yet.
+PiloMill provides camera video, environmental telemetry and explicit manual CNC
+controls through private Tailscale Serve. The operator connects USB, jogs, sets
+material zero and controls the spindle. There is no automatic USB reconnect,
+homing, probing, unlock or job execution. File streaming is not implemented yet.
+See the operations guide for the first supervised test.

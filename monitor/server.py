@@ -1,9 +1,9 @@
 # ---------------------------------------------------------------------------
 # server.py
 # 2026-10-02
-# - Loopback dashboard assets, shared MJPEG camera and cached DHT22 telemetry.
+# - Private monitoring dashboard and explicit manual CNC operator actions.
 # ---------------------------------------------------------------------------
-"""Serve monitoring over Tailscale Serve; never access CNC serial ports."""
+"""Serve monitoring and explicit manual CNC controls through Tailscale Serve."""
 
 import argparse
 import json
@@ -12,12 +12,14 @@ import os
 from pathlib import Path
 import signal
 import selectors
+import secrets
 import subprocess
 import threading
 import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
+from monitor.cnc import Controller
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_FRAME_BYTES = 2 * 1024 * 1024
@@ -217,10 +219,12 @@ class MonitorServer(ThreadingHTTPServer):
         self.state = state
         self.stop = stop
         self.stream_slots = threading.BoundedSemaphore(4)
+        self.cnc = Controller()
+        self.control_token = secrets.token_urlsafe(32)
 
 
 class Handler(BaseHTTPRequestHandler):
-    """Read-only fixed routes; no filesystem browsing or control commands."""
+    """Fixed monitoring routes and token-protected manual CNC actions."""
 
     def setup(self):
         super().setup()
@@ -260,7 +264,10 @@ class Handler(BaseHTTPRequestHandler):
                     200, content_type, (ROOT / "web" / filename).read_bytes(),
                 )
             elif path == "/api/status":
-                body = json.dumps(self.server.state.status()).encode()
+                status = self.server.state.status()
+                status["cnc"] = self.server.cnc.status()
+                status["control_token"] = self.server.control_token
+                body = json.dumps(status).encode()
                 self.respond(200, "application/json", body)
             elif path == "/camera.jpg":
                 with self.server.state.condition:
@@ -276,6 +283,34 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(404, "text/plain", b"Not found")
         except (BrokenPipeError, ConnectionResetError, TimeoutError):
             pass
+
+    def do_POST(self):
+        """Accept allowlisted manual actions with a same-origin CSRF token."""
+        if urlsplit(self.path).path != "/api/cnc/action":
+            self.respond(501, "text/plain", b"Unsupported request")
+            return
+        token = self.headers.get("X-PiloMill-Token", "")
+        if not secrets.compare_digest(token, self.server.control_token):
+            self.respond(403, "text/plain", b"Missing control token")
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 1 <= length <= 1024:
+                raise ValueError("Invalid request size")
+            if self.headers.get("Content-Type") != "application/json":
+                raise ValueError("JSON required")
+            payload = json.loads(self.rfile.read(length))
+            if not isinstance(payload, dict):
+                raise ValueError("Object required")
+            self.server.cnc.action(payload.get("action"), payload)
+            body = json.dumps({"ok": True}).encode()
+            self.respond(200, "application/json", body)
+        except (ValueError, TypeError) as error:
+            body = json.dumps({"error": str(error)}).encode()
+            self.respond(400, "application/json", body)
+        except RuntimeError as error:
+            body = json.dumps({"error": str(error)}).encode()
+            self.respond(503, "application/json", body)
 
     def stream(self):
         """Broadcast latest frames; do not queue video for a slow viewer."""
@@ -345,6 +380,11 @@ def main():
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
     workers = []
+    cnc_thread = threading.Thread(
+        target=server.cnc.worker, args=(stop,), daemon=True,
+    )
+    workers.append(cnc_thread)
+    cnc_thread.start()
     for worker in (camera_worker, sensor_worker):
         thread = threading.Thread(
             target=worker, args=(state, stop, options), daemon=True,
@@ -352,7 +392,7 @@ def main():
         workers.append(thread)
         thread.start()
     server.timeout = 0.5
-    logging.info("Monitoring on 127.0.0.1:%s; no CNC access", options.port)
+    logging.info("Portal on 127.0.0.1:%s; CNC disconnected", options.port)
     try:
         while not stop.is_set():
             server.handle_request()

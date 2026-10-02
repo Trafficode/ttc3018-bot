@@ -17,19 +17,19 @@
         <span>Wilgotność <strong id="humidity">—</strong></span>
       </div>
       <div class="top-status"><span id="monitor-badge" class="badge muted">Łączenie…</span>
-        <span class="badge muted">CNC niepodłączone</span></div>
+        <span id="cnc-badge" class="badge muted">CNC niepodłączone</span></div>
       <p id="sensor-status" role="status">Oczekiwanie na czujnik…</p>
     </header>
     <div class="workspace">
       <section class="operator" aria-labelledby="operator-heading">
-        <div class="section-heading"><h2 id="operator-heading">Panel operatora</h2><span class="muted">W przygotowaniu</span></div>
-        <p class="notice" id="cnc-status" role="status">Sterowanie niepodłączone. Przyciski CNC są nieaktywne.</p>
-        <div class="axes" aria-label="Pozycje osi niedostępne">
-          <div><span>X</span><strong>—</strong><small>mm</small></div>
-          <div><span>Y</span><strong>—</strong><small>mm</small></div>
-          <div><span>Z</span><strong>—</strong><small>mm</small></div>
+        <div class="section-heading"><h2 id="operator-heading">Panel operatora</h2><button id="connect-cnc" type="button">Połącz CNC</button></div>
+        <p class="notice" id="cnc-status" role="status">Połącz przy maszynie. Otwarcie USB może zresetować sterownik.</p>
+        <div class="axes" aria-label="Pozycje względem materiału">
+          <div><span>X</span><strong id="position-X">—</strong><small>mm</small></div>
+          <div><span>Y</span><strong id="position-Y">—</strong><small>mm</small></div>
+          <div><span>Z</span><strong id="position-Z">—</strong><small>mm</small></div>
         </div>
-        <p class="hint">Pozycja względem materiału · brak odczytu.</p>
+        <p class="hint">Pozycja względem materiału (G54) · po restarcie ustaw zero ponownie.</p>
         <div class="tabs" role="tablist" aria-label="Narzędzia operatora">
           <button id="tab-move" role="tab" aria-selected="true" aria-controls="tool-move" type="button">Ręczny ruch</button>
           <button id="tab-zero" role="tab" aria-selected="false" aria-controls="tool-zero" tabindex="-1" type="button">Zero materiału</button>
@@ -39,29 +39,30 @@
         <div class="tools">
           <section id="tool-move" role="tabpanel" aria-labelledby="tab-move" tabindex="0">
             <h3>Ręczne przesuwanie</h3>
-            <fieldset disabled><legend class="sr-only">Ruch osi — niedostępny</legend>
+            <fieldset disabled data-manual><legend class="sr-only">Ruch osi — niedostępny</legend>
               <div class="motion-settings">
-                <label>Krok<select><option>0,1 mm</option><option selected>1 mm</option><option>10 mm</option></select></label>
-                <label>Prędkość · mm/min<input type="number" value="100" min="1"></label>
+                <label>Krok<select id="jog-step"><option value="0.1">0,1 mm</option><option value="1" selected>1 mm</option><option value="10">10 mm</option></select></label>
+                <label>Prędkość · mm/min<input id="jog-feed" type="number" value="100" min="1" max="300"></label>
               </div>
               <div class="jog-controls">
                 <div class="xy-pad" aria-label="Ruch osi X i Y">
-                  <button class="up" type="button" aria-label="Przesuń Y w kierunku dodatnim">Y +</button>
-                  <button class="left" type="button" aria-label="Przesuń X w kierunku ujemnym">X −</button>
+                  <button class="up" data-axis="Y" data-direction="1" type="button" aria-label="Przesuń Y w kierunku dodatnim">Y +</button>
+                  <button class="left" data-axis="X" data-direction="-1" type="button" aria-label="Przesuń X w kierunku ujemnym">X −</button>
                   <span class="pad-center">X / Y</span>
-                  <button class="right" type="button" aria-label="Przesuń X w kierunku dodatnim">X +</button>
-                  <button class="down" type="button" aria-label="Przesuń Y w kierunku ujemnym">Y −</button>
+                  <button class="right" data-axis="X" data-direction="1" type="button" aria-label="Przesuń X w kierunku dodatnim">X +</button>
+                  <button class="down" data-axis="Y" data-direction="-1" type="button" aria-label="Przesuń Y w kierunku ujemnym">Y −</button>
                 </div>
-                <div class="z-pad"><button type="button" aria-label="Przesuń Z w kierunku dodatnim">Z +</button><span>Oś Z</span><button type="button" aria-label="Przesuń Z w kierunku ujemnym">Z −</button></div>
+                <div class="z-pad"><button data-axis="Z" data-direction="1" type="button" aria-label="Przesuń Z w kierunku dodatnim">Z +</button><span>Oś Z</span><button data-axis="Z" data-direction="-1" type="button" aria-label="Przesuń Z w kierunku ujemnym">Z −</button></div>
               </div>
             </fieldset>
-            <p class="hint">Ruch tylko po Twoim kliknięciu. Bez automatycznego bazowania.</p>
+            <button id="cancel-jog" class="stop" type="button" disabled>Przerwij ręczny ruch</button>
+            <p class="hint">Bez krańcówek: pilnuj końca zakresu. Zacznij od kroku 0,1 mm.</p>
           </section>
           <section id="tool-zero" role="tabpanel" aria-labelledby="tab-zero" tabindex="0" hidden>
             <h3>Zero materiału</h3>
             <p class="hint">Wybrany przez Ciebie punkt odniesienia na materiale. Ustawienie będzie ręczne.</p>
-            <fieldset disabled><legend class="sr-only">Ustawianie zera — niedostępne</legend>
-              <div class="button-row"><button type="button">Zero X / Y</button><button type="button">Zero Z</button></div>
+            <fieldset disabled data-manual><legend class="sr-only">Ustawianie zera — niedostępne</legend>
+              <div class="button-row"><button data-action="zero_xy" type="button">Zero X / Y</button><button data-action="zero_z" type="button">Zero Z</button></div>
             </fieldset>
           </section>
           <section id="tool-file" role="tabpanel" aria-labelledby="tab-file" tabindex="0" hidden>
@@ -73,9 +74,9 @@
             <p class="hint">Wgrywanie i wykonywanie ścieżek nie są jeszcze dostępne.</p>
           </section>
           <section id="tool-spindle" role="tabpanel" aria-labelledby="tab-spindle" tabindex="0" hidden>
-            <h3>Wrzeciono</h3><p class="hint">Stan nieznany · brak połączenia ze sterownikiem.</p>
-            <fieldset disabled><legend class="sr-only">Wrzeciono — niedostępne</legend>
-              <div class="button-row"><button type="button">Włącz</button><button type="button">Wyłącz</button></div>
+            <h3>Wrzeciono</h3><p class="hint">Moc to skala sterownika, nie odczyt obrotów.</p>
+            <fieldset disabled data-manual><legend class="sr-only">Wrzeciono — niedostępne</legend>
+              <label>Moc · 1–1000<input id="spindle-power" type="number" value="300" min="1" max="1000"></label><div class="button-row"><button data-action="spindle_on" type="button">Włącz</button><button data-action="spindle_off" type="button">Wyłącz</button></div>
             </fieldset>
           </section>
         </div>

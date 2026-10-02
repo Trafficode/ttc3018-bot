@@ -22,11 +22,25 @@ on the right. Tabs support click, arrow keys, Home and End. At widths up to
 760 pixels, the camera comes first and the tools appear underneath; mobile can
 scroll. Very short desktop viewports allow scrolling inside the tools panel
 instead of cutting off controls. Tab changes do not send hardware commands.
-The operator panel is a disabled integration placeholder: no axis readings,
-file upload, jog, material-zero, spindle or job action is implemented yet.
-Disabled fieldsets do not have command handlers or writable server routes.
-Unknown positions are shown as dashes, never fake zeroes. A future job-stop
-button is not an emergency stop. Integrating the sender is a separate step.
+The manual panel opens USB only through an explicit Connect action. It owns
+one exclusive 115200-baud connection with DTR/RTS low. Opening can still reset
+hardware. It reads status, firmware, settings and modal state without changing
+settings. Expected spindle scale is 1000 and laser mode is disabled.
+Manual controls: one-axis jog (up to 10 mm, 1–300 mm/min), G54 material zero
+and spindle on/off. Power is the controller scale, not measured RPM.
+Commands require fresh Idle status and G54 coordinates. Jog cancel is available
+while moving; it is not an emergency stop. No automatic homing, probing, unlock,
+reset or reconnect exists. Unknown work positions remain dashes; cached work
+offsets are discarded after zero changes and connection failures.
+File upload and job execution remain disabled, pending manual bench validation.
+
+First supervised test: confirm clear travel and keep the physical power switch
+within reach. Connect, check Idle, select 0.1 mm at 100 mm/min and click X+ once.
+Verify direction and movement before other axes. Do not test Z towards the bed
+until there is safe clearance. Zero requires a physically established material
+reference. Never use power-on machine coordinates as a permanent reference.
+The agent does not send movement or spindle commands for bench testing.
+Network loss does not guarantee spindle stop: use the physical switch when needed.
 It hides numeric sensor readings when failed or older than 20 seconds.
 Camera images older than five seconds are unavailable, never passed off as live.
 The pause button disconnects the browser's video stream but does not stop the
@@ -36,7 +50,13 @@ For an agent, prefer `GET /api/status` and `GET /camera.jpg` rather than watchin
 every frame of `/camera.mjpg`. Status includes the last successful UTC timestamp,
 age, error and a health flag. A cached value with `ok=false` is not current data.
 Unavailable snapshots and exhausted stream slots return HTTP 503.
-All endpoints are read-only; unsupported POST requests return HTTP 501.
+POST `/api/cnc/action` accepts only allowlisted manual actions and a random
+`X-PiloMill-Token` returned by same-origin status. This prevents cross-site
+requests; it is not a separate login or an agent/human permission boundary.
+Tailnet users with portal access can control the machine. Never grant untrusted
+users access. Unknown actions are rejected. Commands are never retried after
+timeout; their outcome may be unknown. Connection errors close USB and require
+explicit reconnection. Polling alone cannot open the port.
 Hardware-free unit tests run via `bash scripts/check.sh`.
 Run `timeout 30s .venv/bin/python scripts/monitor-smoke.py` for a live local
 acceptance test: fresh sensor data, a valid snapshot and at least two video frames.
