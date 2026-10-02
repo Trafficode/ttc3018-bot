@@ -17,7 +17,8 @@ that the same versions remain available forever.
 | DHT evidence | Repeated reads around 23.8–23.9 C, 60.1–60.6%; not calibrated |
 | Remote access | Dedicated restricted SSH key over Tailscale; no public endpoint |
 | Sudo | Password required; noninteractive sudo unavailable |
-| Persistent services | No project camera/sensor/CNC service installed |
+| Persistent services | User `ttc-monitor.service`, camera and sensor only; no CNC sender |
+| Autostart | User linger enabled; no reboot performed to test boot startup |
 
 Repository acceptance on this host: shell syntax checks and Python compilation
 passed; bootstrap built a new repository-local environment; three sensor reads
@@ -25,6 +26,16 @@ succeeded; camera captured a JPEG (1280 x 720). The privileged system-package
 installation path and a fresh SD-card installation have not been exercised.
 The captured frame was almost uniform, so framing and useful scene detail are
 not validated. Aim the camera at the work area and repeat the image test.
+
+The monitoring implementation passes ten hardware-free unit tests. The service
+has a fixed loopback backend, a shared MJPEG camera worker and five-second DHT22
+sampling. Tailscale Serve requires a privileged operator command on this host;
+see the setup guide. Acceptance verified fresh sensor data, JPEG snapshots and
+multiple MJPEG frames locally. A workstation over Tailscale received HTTP 200
+for the dashboard and healthy status via the MagicDNS URL on port 8765.
+The numeric-IP URL returned 404; use the Serve hostname. Both the backend
+loopback bind and enabled user service/linger were checked. Boot recovery has
+not been tested with a reboot. No CNC serial connection was opened.
 
 The initial sensor experiment lives in `~/.local/share/cnc-monitor` on the first
 host. It is not needed by this project: the repository uses its own `.venv` and

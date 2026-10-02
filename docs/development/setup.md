@@ -78,9 +78,42 @@ The sample `config/host.env.example` records the chosen profile. It is not
 automatically sourced: pass `--gpio` to the sensor command and use
 `CAMERA_INDEX=0 bash scripts/camera-snapshot.sh` for camera selection.
 
-No script starts a persistent service, opens a CNC port or reboots. Reboot only
-after confirming the CNC is idle. For remote sudo, an operator can run installation
+Baseline test scripts do not start a persistent service, open a CNC port or reboot.
+Reboot only after confirming the CNC is idle. For remote sudo, an operator can run installation
 locally; do not weaken sudo restrictions just to let an agent install packages.
 
+## Persistent private monitoring
+
+After the separate hardware tests pass:
+
+```bash
+bash scripts/install-monitor.sh
+loginctl enable-linger "$USER"
+sudo tailscale serve --bg --http=8765 http://127.0.0.1:8766
+tailscale serve status
+```
+
+The user systemd unit expects the checkout at `~/github/ttc3018-bot` and starts
+on boot when user linger is enabled. If enabling linger needs authentication,
+run `sudo loginctl enable-linger "$USER"` locally. No reboot is performed by
+these commands. The unit runs as the normal user, not root, with no new privileges.
+Tailscale Serve configuration persists independently of the user service.
+Port 8765 must be unused and permitted by your tailnet access rules; review an
+existing Serve configuration before changing it. Never reset unrelated routes.
+
+Open the URL printed by `tailscale serve status` on a device connected to your
+tailnet. Use its MagicDNS hostname, not the numeric IP: Serve routes by the HTTP
+Host header and can return 404 for an IP URL. On the current host the URL is
+`http://cnc-boot.tail6ec209.ts.net:8765/`; a replacement host gets its own name.
+No router port forwarding is needed. The backend remains loopback-only even
+if Serve cannot be configured, so authentication failure does not expose a LAN port.
+
+To change the GPIO/camera profile, copy `config/host.env.example` to `.env`, edit
+the two values, then restart only `ttc-monitor.service`. Systemd loads that file;
+the one-shot scripts still use their explicit parameters. Do not copy credentials
+or host-specific IP addresses into the template. Stop monitoring before running
+the separate sensor or camera scripts: both devices must have one owner.
+
 Sources: [Raspberry Pi camera software](https://www.raspberrypi.com/documentation/computers/camera_software.html),
-[Adafruit DHT driver](https://docs.circuitpython.org/projects/dht/en/latest/).
+[Adafruit DHT driver](https://docs.circuitpython.org/projects/dht/en/latest/),
+[Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve).

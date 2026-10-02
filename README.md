@@ -9,5 +9,7 @@ DHT22 on GPIO17 and private Tailscale access.
 - [Verified hardware and software](docs/reference/baseline.md)
 - [System boundaries and next components](docs/architecture/system.md)
 
-The repository does not start or control the CNC machine. Live streaming,
-a CNC operator panel and an agent API are not implemented yet.
+The repository does not start or control the CNC machine. A loopback monitoring
+service provides live camera video, DHT22 telemetry and read-only status/snapshot
+endpoints through private Tailscale Serve. A CNC operator panel and CNC agent
+integration are not implemented yet.

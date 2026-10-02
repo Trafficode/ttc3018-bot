@@ -15,7 +15,7 @@ if [[ "${1:-}" == "--install-system" ]]; then
     sudo apt-get install -y git python3-venv python3-dev build-essential \
         python3-lgpio python3-rpi-lgpio rpicam-apps
 fi
-for task_command in python3 rpicam-hello rpicam-still; do
+for task_command in python3 rpicam-hello rpicam-still rpicam-vid; do
     if ! command -v "$task_command" >/dev/null; then
         echo "Missing $task_command; see docs/development/setup.md." >&2
         exit 1

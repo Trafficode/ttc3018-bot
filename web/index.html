@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TTC3018 — podgląd stanowiska</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><p class="eyebrow">TTC3018 · Raspberry Pi</p>
+      <h1>Podgląd stanowiska</h1>
+      <p>Monitoring bez sterowania frezarką. Dostęp przez Tailscale.</p>
+    </header>
+    <section class="readings" aria-label="Warunki otoczenia">
+      <article><h2>Temperatura</h2><strong id="temperature">—</strong></article>
+      <article><h2>Wilgotność</h2><strong id="humidity">—</strong></article>
+    </section>
+    <p id="sensor-status" role="status">Oczekiwanie na odczyt czujnika…</p>
+    <section class="camera" aria-label="Kamera stanowiska">
+      <div class="camera-heading"><h2>Kamera</h2>
+        <button id="toggle" type="button">Wstrzymaj podgląd</button></div>
+      <img id="camera" alt="Obraz z kamery stanowiska CNC">
+      <p id="camera-status" role="status">Oczekiwanie na kamerę…</p>
+    </section>
+    <footer>Podgląd nie zastępuje obecności przy frezarce ani wyłącznika awaryjnego.
+      <a href="/camera.jpg" target="_blank" rel="noopener">Aktualne zdjęcie</a>
+    </footer>
+  </main>
+</body>
+</html>
