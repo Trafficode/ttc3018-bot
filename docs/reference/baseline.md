@@ -17,7 +17,7 @@ that the same versions remain available forever.
 | DHT evidence | Repeated reads around 23.8–23.9 C, 60.1–60.6%; not calibrated |
 | Remote access | Dedicated restricted SSH key over Tailscale; no public endpoint |
 | Sudo | Password required; noninteractive sudo unavailable |
-| Persistent services | User `ttc-monitor.service`, camera and sensor only; no CNC sender |
+| Persistent services | User `ttc-monitor.service`, camera, sensor and explicitly connected manual CNC |
 | Autostart | User linger enabled; no reboot performed to test boot startup |
 
 Repository acceptance on this host: shell syntax checks and Python compilation

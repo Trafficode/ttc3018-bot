@@ -148,7 +148,7 @@ class Controller:
                 # Startup output is not a command acknowledgment.
                 # ESP32 boot output can arrive seconds after opening USB.
                 # This wait belongs only to explicit connection, never recovery.
-                time.sleep(4)
+                time.sleep(7)
                 port.reset_input_buffer()
                 self._status(starting=True)
                 if self.report["state"] != "Idle":

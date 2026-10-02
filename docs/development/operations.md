@@ -24,7 +24,9 @@ scroll. Very short desktop viewports allow scrolling inside the tools panel
 instead of cutting off controls. Tab changes do not send hardware commands.
 The manual panel opens USB only through an explicit Connect action. It owns
 one exclusive 115200-baud connection with DTR/RTS low. Opening can still reset
-hardware. It reads status, firmware, settings and modal state without changing
+hardware. This firmware emitted startup banners at about 2.6 and 5 seconds;
+explicit connection waits seven seconds before querying it. It reads status,
+firmware, settings and modal state without changing
 settings. Expected spindle scale is 1000 and laser mode is disabled.
 Manual controls: one-axis jog (up to 10 mm, 1–300 mm/min), G54 material zero
 and spindle on/off. Power is the controller scale, not measured RPM.
