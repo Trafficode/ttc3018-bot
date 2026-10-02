@@ -3,30 +3,99 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>TTC3018 — podgląd stanowiska</title>
+  <title>TTC3018 — stanowisko CNC</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
   <main>
-    <header><p class="eyebrow">TTC3018 · Raspberry Pi</p>
-      <h1>Podgląd stanowiska</h1>
-      <p>Monitoring bez sterowania frezarką. Dostęp przez Tailscale.</p>
+    <header class="page-heading">
+      <div><p class="eyebrow">TWO TREES · TTC3018</p>
+        <h1>Stanowisko CNC</h1><p class="subtitle">Operator i podgląd w jednym miejscu.</p></div>
+      <span class="badge">Prywatny dostęp · Tailscale</span>
     </header>
-    <section class="readings" aria-label="Warunki otoczenia">
-      <article><h2>Temperatura</h2><strong id="temperature">—</strong></article>
-      <article><h2>Wilgotność</h2><strong id="humidity">—</strong></article>
-    </section>
-    <p id="sensor-status" role="status">Oczekiwanie na odczyt czujnika…</p>
-    <section class="camera" aria-label="Kamera stanowiska">
-      <div class="camera-heading"><h2>Kamera</h2>
-        <button id="toggle" type="button">Wstrzymaj podgląd</button></div>
-      <img id="camera" alt="Obraz z kamery stanowiska CNC">
-      <p id="camera-status" role="status">Oczekiwanie na kamerę…</p>
-    </section>
-    <footer>Podgląd nie zastępuje obecności przy frezarce ani wyłącznika awaryjnego.
-      <a href="/camera.jpg" target="_blank" rel="noopener">Aktualne zdjęcie</a>
-    </footer>
+    <div class="workspace">
+      <section class="operator" aria-labelledby="operator-heading">
+        <div class="section-heading"><h2 id="operator-heading">Panel operatora</h2>
+          <span class="badge muted">W przygotowaniu</span></div>
+        <div class="notice" id="cnc-status" role="status">
+          Sterowanie nie jest podłączone. Przyciski nie wysyłają komend do frezarki.
+        </div>
+        <article class="panel">
+          <h3>Pozycja względem materiału</h3>
+          <div class="axes" aria-label="Pozycje osi niedostępne">
+            <div><span>X</span><strong>—</strong><small>mm</small></div>
+            <div><span>Y</span><strong>—</strong><small>mm</small></div>
+            <div><span>Z</span><strong>—</strong><small>mm</small></div>
+          </div>
+          <p class="hint">Brak odczytu pozycji. Kreska nie oznacza zera.</p>
+          <fieldset disabled aria-describedby="zero-help">
+            <legend class="sr-only">Ustawianie zera materiału — niedostępne</legend>
+            <div class="button-row"><button type="button">Zero X / Y</button>
+              <button type="button">Zero Z</button></div>
+          </fieldset>
+          <p class="hint" id="zero-help">Zero to wybrany przez Ciebie punkt odniesienia na materiale.</p>
+        </article>
+        <article class="panel">
+          <h3>Ręczne przesuwanie</h3>
+          <fieldset disabled aria-describedby="movement-help">
+            <legend class="sr-only">Przesuwanie osi — niedostępne</legend>
+            <div class="motion-settings">
+              <label>Krok ruchu<select><option>0,1 mm</option><option selected>1 mm</option><option>10 mm</option></select></label>
+              <label>Prędkość<input type="number" value="100" min="1"><small>mm/min</small></label>
+            </div>
+            <div class="jog-controls">
+              <div class="xy-pad" aria-label="Ruch osi X i Y">
+                <button class="up" type="button" aria-label="Przesuń Y w kierunku dodatnim">Y +</button>
+                <button class="left" type="button" aria-label="Przesuń X w kierunku ujemnym">X −</button>
+                <span class="pad-center">X / Y</span>
+                <button class="right" type="button" aria-label="Przesuń X w kierunku dodatnim">X +</button>
+                <button class="down" type="button" aria-label="Przesuń Y w kierunku ujemnym">Y −</button>
+              </div>
+              <div class="z-pad"><button type="button" aria-label="Przesuń Z w kierunku dodatnim">Z +</button>
+                <span>Oś Z</span><button type="button" aria-label="Przesuń Z w kierunku ujemnym">Z −</button></div>
+            </div>
+          </fieldset>
+          <p class="hint" id="movement-help">Ruch będzie wykonywany tylko po Twoim kliknięciu. Bez automatycznego bazowania.</p>
+        </article>
+        <article class="panel">
+          <h3>Plik do frezowania</h3>
+          <fieldset disabled>
+            <legend class="sr-only">Wgrywanie i uruchamianie pliku — niedostępne</legend>
+            <label>Plik G-code<input type="file" accept=".nc,.gcode,.tap"></label>
+            <div class="button-row job-actions"><button type="button">Start</button>
+              <button type="button">Pauza</button><button class="stop" type="button">Stop zadania</button></div>
+          </fieldset>
+          <p class="hint">Wgrywanie pliku i wykonywanie ścieżek nie są jeszcze dostępne.</p>
+        </article>
+        <article class="panel">
+          <h3>Wrzeciono</h3><p class="hint">Stan nieznany · brak połączenia ze sterownikiem.</p>
+          <fieldset disabled><legend class="sr-only">Wrzeciono — niedostępne</legend>
+            <div class="button-row"><button type="button">Włącz</button><button type="button">Wyłącz</button></div>
+          </fieldset>
+        </article>
+      </section>
+      <section class="monitoring" aria-labelledby="monitor-heading">
+        <div class="section-heading"><h2 id="monitor-heading">Podgląd stanowiska</h2>
+          <span id="monitor-badge" class="badge muted">Łączenie…</span></div>
+        <article class="panel camera" aria-label="Kamera stanowiska">
+          <div class="camera-heading"><h3>Kamera na żywo</h3>
+            <button id="toggle" type="button">Wstrzymaj podgląd</button></div>
+          <img id="camera" alt="Obraz z kamery stanowiska CNC">
+          <p id="camera-status" role="status">Oczekiwanie na kamerę…</p>
+          <a href="/camera.jpg" target="_blank" rel="noopener">Otwórz aktualne zdjęcie ↗</a>
+        </article>
+        <div class="readings" aria-label="Warunki otoczenia">
+          <article class="panel"><h3>Temperatura</h3><strong id="temperature">—</strong><p class="hint">Otoczenie frezarki</p></article>
+          <article class="panel"><h3>Wilgotność</h3><strong id="humidity">—</strong><p class="hint">Wilgotność względna</p></article>
+        </div>
+        <p id="sensor-status" role="status">Oczekiwanie na odczyt czujnika…</p>
+        <aside class="safety-note"><h3>Operator pozostaje przy maszynie</h3>
+          <p>Kamera nie zastępuje nadzoru. „Stop zadania” nie jest fizycznym wyłącznikiem awaryjnym.
+            Ruch osi i start frezowania będą wymagały Twojej decyzji.</p></aside>
+      </section>
+    </div>
+    <footer>Monitoring działa niezależnie od sterowania CNC. Agent nie uruchamia frezowania.</footer>
   </main>
 </body>
 </html>

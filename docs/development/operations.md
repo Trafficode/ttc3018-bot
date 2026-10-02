@@ -15,6 +15,14 @@ camera or DHT22 tests; otherwise readers will compete for the same devices.
 | Stop monitoring | `systemctl --user stop ttc-monitor` | Releases camera and sensor only |
 
 The dashboard shows temperature, humidity, sample age and camera health.
+It uses a single-page operator layout: controls on the left, live camera and
+environment readings on the right. Below 820 pixels, monitoring comes first
+and the operator panel appears underneath. No tab switch is required.
+The operator panel is a disabled integration placeholder: no axis readings,
+file upload, jog, material-zero, spindle or job action is implemented yet.
+Disabled fieldsets do not have command handlers or writable server routes.
+Unknown positions are shown as dashes, never fake zeroes. A future job-stop
+button is not an emergency stop. Integrating the sender is a separate step.
 It hides numeric sensor readings when failed or older than 20 seconds.
 Camera images older than five seconds are unavailable, never passed off as live.
 The pause button disconnects the browser's video stream but does not stop the

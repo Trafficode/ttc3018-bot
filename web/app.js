@@ -4,6 +4,7 @@ const sensorStatus = document.getElementById('sensor-status');
 const cameraStatus = document.getElementById('camera-status');
 const camera = document.getElementById('camera');
 const toggle = document.getElementById('toggle');
+const monitorBadge = document.getElementById('monitor-badge');
 let paused = false;
 let streamActive = false;
 
@@ -26,6 +27,8 @@ async function refresh() {
     });
     if (!response.ok) throw new Error('Brak odpowiedzi serwera');
     const status = await response.json();
+    monitorBadge.textContent = status.camera.ok ? 'Kamera działa' : 'Brak obrazu';
+    monitorBadge.className = status.camera.ok ? 'badge' : 'badge warning';
     const environment = status.environment;
     temperature.textContent = environment.ok
       ? `${environment.temperature_c.toFixed(1)} °C` : '—';
@@ -46,6 +49,8 @@ async function refresh() {
       stopStream();
     }
   } catch (error) {
+    monitorBadge.textContent = 'Brak połączenia';
+    monitorBadge.className = 'badge warning';
     temperature.textContent = '—';
     humidity.textContent = '—';
     sensorStatus.className = 'warning';
