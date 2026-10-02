@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # server.py
 # 2026-10-02
-# - Loopback-only dashboard, shared MJPEG camera and cached DHT22 telemetry.
+# - Loopback dashboard assets, shared MJPEG camera and cached DHT22 telemetry.
 # ---------------------------------------------------------------------------
 """Serve monitoring over Tailscale Serve; never access CNC serial ports."""
 
@@ -248,6 +248,7 @@ class Handler(BaseHTTPRequestHandler):
         """Serve the dashboard, status, fresh snapshot or shared MJPEG stream."""
         path = urlsplit(self.path).path
         assets = {
+            "/favicon.svg": ("favicon.svg", "image/svg+xml"),
             "/": ("index.html", "text/html; charset=utf-8"),
             "/style.css": ("style.css", "text/css; charset=utf-8"),
             "/app.js": ("app.js", "text/javascript; charset=utf-8"),
