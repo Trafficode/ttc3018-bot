@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # monitor-smoke.py
 # 2026-10-02
-# - Bounded local HTTP acceptance test for running camera/sensor monitoring.
+# - Bounded monitoring acceptance test with control tokens omitted from output.
 # ---------------------------------------------------------------------------
 """Check the running service; no direct GPIO, camera or CNC access."""
 
@@ -22,6 +22,7 @@ def main():
     while True:
         with urlopen(base + "/api/status", timeout=3) as response:
             status = json.load(response)
+        status.pop("control_token", None)
         if status["camera"]["ok"] and status["environment"]["ok"]:
             break
         if time.monotonic() >= deadline:
