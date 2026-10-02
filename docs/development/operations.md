@@ -15,9 +15,13 @@ camera or DHT22 tests; otherwise readers will compete for the same devices.
 | Stop monitoring | `systemctl --user stop ttc-monitor` | Releases camera and sensor only |
 
 The dashboard shows temperature, humidity, sample age and camera health.
-It uses a single-page operator layout: controls on the left, live camera and
-environment readings on the right. Below 820 pixels, monitoring comes first
-and the operator panel appears underneath. No tab switch is required.
+It uses a compact single-page layout sized to the desktop viewport. The top bar
+shows temperature, humidity and connection status. Tools on the left have tabs
+for manual movement, material zero, files and spindle; the camera remains visible
+on the right. Tabs support click, arrow keys, Home and End. At widths up to
+760 pixels, the camera comes first and the tools appear underneath; mobile can
+scroll. Very short desktop viewports allow scrolling inside the tools panel
+instead of cutting off controls. Tab changes do not send hardware commands.
 The operator panel is a disabled integration placeholder: no axis readings,
 file upload, jog, material-zero, spindle or job action is implemented yet.
 Disabled fieldsets do not have command handlers or writable server routes.

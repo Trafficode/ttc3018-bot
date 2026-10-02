@@ -8,6 +8,31 @@ const monitorBadge = document.getElementById('monitor-badge');
 let paused = false;
 let streamActive = false;
 
+const toolTabs = Array.from(document.querySelectorAll('[role="tab"]'));
+function selectTool(tab, focus = false) {
+  for (const item of toolTabs) {
+    const active = item === tab;
+    item.setAttribute('aria-selected', String(active));
+    item.tabIndex = active ? 0 : -1;
+    document.getElementById(item.getAttribute('aria-controls')).hidden = !active;
+  }
+  if (focus) tab.focus();
+}
+for (const tab of toolTabs) {
+  tab.addEventListener('click', () => selectTool(tab));
+  tab.addEventListener('keydown', event => {
+    const index = toolTabs.indexOf(tab);
+    let next = index;
+    if (event.key === 'ArrowRight') next = (index + 1) % toolTabs.length;
+    else if (event.key === 'ArrowLeft') next = (index + toolTabs.length - 1) % toolTabs.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = toolTabs.length - 1;
+    else return;
+    event.preventDefault();
+    selectTool(toolTabs[next], true);
+  });
+}
+
 function stopStream() {
   camera.removeAttribute('src');
   streamActive = false;
