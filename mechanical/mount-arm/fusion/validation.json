@@ -1,0 +1,92 @@
+{
+  "source_of_truth": "Autodesk Fusion",
+  "document": "PiloMill-L",
+  "document_saved": true,
+  "unsaved_changes": false,
+  "fusion_version": "2705.1.25",
+  "units": "mm",
+  "parts": [
+    {
+      "name": "StandBase",
+      "volume_mm3": 218805.76,
+      "min_mm": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "max_mm": [
+        180.0,
+        140.0,
+        10.0
+      ]
+    },
+    {
+      "name": "StandPole",
+      "volume_mm3": 88873.93364445781,
+      "min_mm": [
+        65.0,
+        -4.551914400963142e-14,
+        1.9999999999999984
+      ],
+      "max_mm": [
+        115.0,
+        8.000000000000007,
+        237.0
+      ]
+    },
+    {
+      "name": "EquipmentHead",
+      "volume_mm3": 77450.51594632327,
+      "min_mm": [
+        18.528707934360998,
+        7.999999999999998,
+        135.1968737244363
+      ],
+      "max_mm": [
+        159.78081901867228,
+        123.0,
+        225.17789512739432
+      ]
+    },
+    {
+      "name": "ClampKnob",
+      "volume_mm3": 8105.497580563771,
+      "min_mm": [
+        72.0,
+        -11.0,
+        165.99999999999997
+      ],
+      "max_mm": [
+        108.0,
+        -0.999999999999992,
+        198.0
+      ]
+    }
+  ],
+  "timeline_healthy": true,
+  "rear_edge_offset_mm": 4.551914400963142e-14,
+  "parameters": {
+    "LBaseThickness": "10 mm",
+    "LSocketFloor": "2 mm",
+    "LSocketWidth": "30.4 mm",
+    "LSocketDepth": "8.2 mm"
+  },
+  "sketches": [
+    {
+      "name": "Fill original socket",
+      "fully_constrained": true
+    },
+    {
+      "name": "Rear-edge socket",
+      "fully_constrained": true
+    }
+  ],
+  "physical_fit_validated": false,
+  "stability_validated": false,
+  "thermal_validated": false,
+  "slicer_validated": false,
+  "sha256": {
+    "PiloMill-L.f3d": "5e197ed71de6a1fa21c6c2de3b90d91ca40115f56d9f46d826690968a05875fa",
+    "PiloMill-L.step": "9257f1cb245d371811d7f2d2b6f7c929001c11b451e08c5edf87cf4170055d04"
+  }
+}

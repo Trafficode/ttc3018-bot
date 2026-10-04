@@ -1,0 +1,15 @@
+{
+  "units": "mm",
+  "purpose": "Preserved reference samples for prototype RPi snap fits",
+  "physical_fit_validated": false,
+  "reference_hole_mm": 2.7,
+  "reference_gauge_thickness_mm": 1.6,
+  "shaft_mm": 2.35,
+  "barb_mm": 2.9,
+  "split_mm": 0.7,
+  "material_assumption": "PLA+; unspecified grade",
+  "sha256": {
+    "SinglePegCoupon.stl": "5e8cfefa4a9e87c7fa6cef9fac27d1db8b1be0146b01004bc69e986c368507cd",
+    "PegTestGauge.stl": "37746bd88736dbf36fd2d25974c64a2a9285de361fb2b3bfe79d05b9d0d2ac24"
+  }
+}
