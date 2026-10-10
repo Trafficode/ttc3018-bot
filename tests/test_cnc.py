@@ -1,11 +1,12 @@
 # ---------------------------------------------------------------------------
 # test_cnc.py
-# 2026-10-02
-# - Hardware-free command validation, status and failure behavior tests.
+# 2026-10-10
+# - Hardware-free commands, connection freshness and safe disconnect tests.
 # ---------------------------------------------------------------------------
 """Test manual CNC integration without opening USB or moving a machine."""
 
 import unittest
+import time
 
 from monitor.cnc import Controller, manual_command, parse_status
 
@@ -32,6 +33,64 @@ class FakePort:
 
 class CncTests(unittest.TestCase):
     """Verify bounded commands and conservative device failure handling."""
+
+    def test_stale_reading_keeps_connection_but_hides_position(self):
+        cnc = Controller()
+        cnc.port = FakePort(["<Idle|WPos:1,2,3>"])
+        cnc._status()
+        cnc.report_time = time.monotonic() - 3
+        status = cnc.status()
+        self.assertTrue(status["connected"])
+        self.assertFalse(status["fresh"])
+        self.assertIsNone(status["state"])
+        self.assertIsNone(status["position"])
+
+    def test_disconnect_checks_idle_and_m5_then_clears_data(self):
+        cnc = Controller()
+        port = FakePort([
+            "<Idle|WPos:1,2,3>", "[GC:G0 G54 G17 G21 M5]", "ok",
+        ])
+        cnc.port = port
+        cnc.info = ["old firmware"]
+        cnc.offset = [1, 2, 3]
+        cnc.action("disconnect", {})
+        self.assertTrue(port.closed)
+        self.assertEqual(port.writes, [b"?", b"$G\n"])
+        self.assertFalse(cnc.status()["connected"])
+        self.assertFalse(cnc.status()["fresh"])
+        self.assertIsNone(cnc.status()["position"])
+        self.assertIsNone(cnc.offset)
+        self.assertEqual(cnc.info, [])
+        cnc.action("disconnect", {})
+        self.assertEqual(port.writes, [b"?", b"$G\n"])
+
+    def test_disconnect_rejects_busy_machine_without_closing(self):
+        cnc = Controller()
+        port = FakePort(["<Jog|WPos:1,2,3>"])
+        cnc.port = port
+        with self.assertRaises(ValueError):
+            cnc.action("disconnect", {})
+        self.assertFalse(port.closed)
+        self.assertEqual(port.writes, [b"?"])
+
+    def test_disconnect_rejects_running_or_unknown_spindle(self):
+        for modal in ("[GC:G0 G54 M3 S300]", "[GC:G0 G54]"):
+            cnc = Controller()
+            port = FakePort(["<Idle|WPos:1,2,3>", modal, "ok"])
+            cnc.port = port
+            with self.assertRaises(ValueError):
+                cnc.action("disconnect", {})
+            self.assertFalse(port.closed)
+            self.assertEqual(port.writes, [b"?", b"$G\n"])
+
+    def test_disconnect_reset_closes_without_commands_or_retry(self):
+        cnc = Controller()
+        port = FakePort(["Grbl 1.1h"])
+        cnc.port = port
+        with self.assertRaises(RuntimeError):
+            cnc.action("disconnect", {})
+        self.assertTrue(port.closed)
+        self.assertEqual(port.writes, [b"?"])
 
     def test_commands(self):
         self.assertEqual(

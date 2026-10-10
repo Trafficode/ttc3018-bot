@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>PiloMill — stanowisko CNC</title>
+  <title>Bark Beetle — stanowisko CNC</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
@@ -11,7 +11,7 @@
 <body>
   <main>
     <header class="topbar">
-      <div class="brand"><h1>PiloMill</h1><span>TTC3018 · stanowisko CNC</span></div>
+      <div class="brand"><h1>Bark Beetle</h1><span>TTC3018</span></div>
       <div class="telemetry" aria-label="Warunki otoczenia">
         <span>Temperatura <strong id="temperature">—</strong></span>
         <span>Wilgotność <strong id="humidity">—</strong></span>
@@ -19,29 +19,36 @@
       <div class="top-status"><span id="monitor-badge" class="badge muted">Łączenie…</span>
         <span id="cnc-badge" class="badge muted">CNC niepodłączone</span></div>
       <p id="sensor-status" role="status">Oczekiwanie na czujnik…</p>
+      <button id="connect-cnc" type="button" disabled>Stan CNC nieznany</button>
     </header>
+    <section class="readout" aria-label="Pozycje względem materiału">
+      <p>Pozycja (G54)</p>
+      <div class="axes">
+        <div><span>X</span><strong id="position-X">—</strong><small>mm</small></div>
+        <div><span>Y</span><strong id="position-Y">—</strong><small>mm</small></div>
+        <div><span>Z</span><strong id="position-Z">—</strong><small>mm</small></div>
+      </div>
+      <p class="hint">Po restarcie ustaw zero ponownie.</p>
+    </section>
     <div class="workspace">
       <section class="operator" aria-labelledby="operator-heading">
-        <div class="section-heading"><h2 id="operator-heading">Panel operatora</h2><button id="connect-cnc" type="button">Połącz CNC</button></div>
-        <p class="notice" id="cnc-status" role="status">Połącz przy maszynie. Otwarcie USB może zresetować sterownik.</p>
-        <div class="axes" aria-label="Pozycje względem materiału">
-          <div><span>X</span><strong id="position-X">—</strong><small>mm</small></div>
-          <div><span>Y</span><strong id="position-Y">—</strong><small>mm</small></div>
-          <div><span>Z</span><strong id="position-Z">—</strong><small>mm</small></div>
-        </div>
-        <p class="hint">Pozycja względem materiału (G54) · po restarcie ustaw zero ponownie.</p>
+        <div class="section-heading"><h2 id="operator-heading">Panel operatora</h2></div>
         <div class="tabs" role="tablist" aria-label="Narzędzia operatora">
-          <button id="tab-move" role="tab" aria-selected="true" aria-controls="tool-move" type="button">Ręczny ruch</button>
-          <button id="tab-zero" role="tab" aria-selected="false" aria-controls="tool-zero" tabindex="-1" type="button">Zero materiału</button>
-          <button id="tab-file" role="tab" aria-selected="false" aria-controls="tool-file" tabindex="-1" type="button">Załaduj plik</button>
-          <button id="tab-spindle" role="tab" aria-selected="false" aria-controls="tool-spindle" tabindex="-1" type="button">Wrzeciono</button>
+          <button id="tab-move" role="tab" aria-selected="true" aria-controls="tool-move" type="button">1. Ruch</button>
+          <button id="tab-zero" role="tab" aria-selected="false" aria-controls="tool-zero" tabindex="-1" type="button">2. Zero</button>
+          <button id="tab-file" role="tab" aria-selected="false" aria-controls="tool-file" tabindex="-1" type="button">3. Plik<small>Niedostępny</small></button>
+          <button id="tab-spindle" role="tab" aria-selected="false" aria-controls="tool-spindle" tabindex="-1" type="button">4. Wrzeciono</button>
         </div>
         <div class="tools">
           <section id="tool-move" role="tabpanel" aria-labelledby="tab-move" tabindex="0">
             <h3>Ręczne przesuwanie</h3>
             <fieldset disabled data-manual><legend class="sr-only">Ręczny ruch osi</legend>
               <div class="motion-settings">
-                <label>Krok<select id="jog-step"><option value="0.1" selected>0,1 mm</option><option value="1">1 mm</option><option value="10">10 mm</option></select></label>
+                <div><span class="field-label" id="step-label">Krok</span><div class="step-options" role="group" aria-labelledby="step-label">
+                  <label><input type="radio" name="step" value="0.1" checked><span>0,1 mm</span></label>
+                  <label><input type="radio" name="step" value="1"><span>1 mm</span></label>
+                  <label><input type="radio" name="step" value="10"><span>10 mm</span></label>
+                </div></div>
                 <label>Prędkość · mm/min<input id="jog-feed" type="number" value="100" min="1" max="300"></label>
               </div>
               <div class="jog-controls">
@@ -55,7 +62,7 @@
                 <div class="z-pad"><button data-axis="Z" data-direction="1" type="button" aria-label="Przesuń Z w kierunku dodatnim">Z +</button><span>Oś Z</span><button data-axis="Z" data-direction="-1" type="button" aria-label="Przesuń Z w kierunku ujemnym">Z −</button></div>
               </div>
             </fieldset>
-            <button id="cancel-jog" class="stop" type="button" disabled>Przerwij ręczny ruch</button>
+            <button id="cancel-jog" class="stop" type="button" disabled>Przerwij ruch</button>
             <p class="hint">Bez krańcówek: pilnuj końca zakresu. Zacznij od kroku 0,1 mm.</p>
           </section>
           <section id="tool-zero" role="tabpanel" aria-labelledby="tab-zero" tabindex="0" hidden>
@@ -80,16 +87,17 @@
             </fieldset>
           </section>
         </div>
+        <p class="notice" id="cnc-status" role="status">Połącz przy maszynie. Otwarcie USB może zresetować sterownik.</p>
         <p class="operator-footer">Agent nie uruchamia frezowania.</p>
       </section>
       <section class="monitoring" aria-labelledby="monitor-heading">
         <div class="camera-heading"><h2 id="monitor-heading">Podgląd na żywo</h2>
-          <div class="camera-actions"><a href="/camera.jpg" target="_blank" rel="noopener">Zdjęcie ↗</a><button id="toggle" type="button">Wstrzymaj podgląd</button></div></div>
+          <div class="camera-actions"><a href="/camera.jpg" target="_blank" rel="noopener">Zdjęcie</a><button id="toggle" type="button">Wstrzymaj podgląd</button></div></div>
         <div class="camera-stage"><img id="camera" alt="Obraz z kamery stanowiska CNC"></div>
         <p id="camera-status" role="status">Oczekiwanie na kamerę…</p>
-        <p class="safety-note">Pozostań przy maszynie. Podgląd i „Stop zadania” nie zastępują wyłącznika awaryjnego.</p>
       </section>
     </div>
+    <p class="safety-note">Pozostań przy maszynie. Podgląd i przerwanie ruchu nie zastępują wyłącznika awaryjnego.</p>
   </main>
 </body>
 </html>

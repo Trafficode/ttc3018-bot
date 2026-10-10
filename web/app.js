@@ -10,6 +10,9 @@ let streamActive = false;
 let controlToken = null;
 let cncConnected = false;
 let cncIdle = false;
+let cncFresh = false;
+let cncKnown = false;
+let pendingAction = null;
 let actionPending = false;
 let actionMessage = '';
 const cncBadge = document.getElementById('cnc-badge');
@@ -18,10 +21,19 @@ const connectButton = document.getElementById('connect-cnc');
 
 function updateControls() {
   for (const field of document.querySelectorAll('[data-manual]')) {
-    field.disabled = !cncConnected || !cncIdle || actionPending;
+    field.disabled = !cncConnected || !cncFresh || !cncIdle || actionPending;
   }
-  connectButton.disabled = !controlToken || cncConnected || actionPending;
-  document.getElementById('cancel-jog').disabled = !cncConnected || actionPending;
+  connectButton.textContent = pendingAction === 'connect' ? 'Łączenie…'
+    : pendingAction === 'disconnect' ? 'Rozłączanie…'
+    : !cncKnown ? 'Stan CNC nieznany'
+    : cncConnected ? 'Rozłącz CNC' : 'Połącz CNC';
+  connectButton.disabled = !controlToken || !cncKnown || actionPending
+    || (cncConnected && (!cncFresh || !cncIdle));
+  if (pendingAction === 'connect' || pendingAction === 'disconnect') {
+    cncBadge.textContent = pendingAction === 'connect' ? 'CNC: łączenie…' : 'CNC: rozłączanie…';
+    cncBadge.className = 'badge muted';
+  }
+  document.getElementById('cancel-jog').disabled = !cncConnected || !cncKnown || actionPending;
 }
 
 document.getElementById('cancel-jog').addEventListener('click', () => sendAction({action: 'jog_cancel'}));
@@ -29,7 +41,10 @@ document.getElementById('cancel-jog').addEventListener('click', () => sendAction
 async function sendAction(payload) {
   if (actionPending || !controlToken) return;
   actionPending = true;
-  actionMessage = 'Oczekiwanie na odpowiedź sterownika…';
+  pendingAction = payload.action;
+  actionMessage = payload.action === 'connect' ? 'Łączenie ze sterownikiem…'
+    : payload.action === 'disconnect' ? 'Rozłączanie CNC…'
+    : 'Oczekiwanie na odpowiedź sterownika…';
   cncStatus.textContent = actionMessage;
   updateControls();
   try {
@@ -40,18 +55,27 @@ async function sendAction(payload) {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Błąd sterownika');
-    actionMessage = 'Sterownik przyjął polecenie. Sprawdź maszynę i pozycję.';
+    actionMessage = payload.action === 'connect' ? 'CNC połączone.'
+      : payload.action === 'disconnect' ? 'CNC rozłączone przez operatora.'
+      : 'Sterownik przyjął polecenie. Sprawdź maszynę i pozycję.';
   } catch (error) {
     actionMessage = `Błąd: ${error.message}. Nie ponawiaj w ciemno — sprawdź maszynę.`;
   } finally {
     actionPending = false;
+    pendingAction = null;
     await refresh();
-    cncStatus.textContent = actionMessage;
     updateControls();
   }
 }
 
 connectButton.addEventListener('click', () => {
+  if (!cncKnown || actionPending) return;
+  if (cncConnected) {
+    if (confirm('Rozłączyć CNC? Frezarka musi być bezczynna, a wrzeciono fizycznie wyłączone. Rozłączenie USB nie zatrzymuje wrzeciona.')) {
+      sendAction({action: 'disconnect'});
+    }
+    return;
+  }
   if (confirm('Czy frezarka stoi, wrzeciono jest wyłączone i jesteś przy maszynie? Otwarcie USB może zresetować sterownik.')) {
     sendAction({action: 'connect'});
   }
@@ -59,7 +83,7 @@ connectButton.addEventListener('click', () => {
 for (const button of document.querySelectorAll('[data-axis]')) {
   button.addEventListener('click', () => sendAction({
     action: 'jog', axis: button.dataset.axis,
-    distance: Number(document.getElementById('jog-step').value) * Number(button.dataset.direction),
+    distance: Number(document.querySelector('input[name="step"]:checked').value) * Number(button.dataset.direction),
     feed: Number(document.getElementById('jog-feed').value),
   }));
 }
@@ -117,15 +141,25 @@ async function refresh() {
     if (!response.ok) throw new Error('Brak odpowiedzi serwera');
     const status = await response.json();
     controlToken = status.control_token;
+    const wasConnected = cncConnected;
     cncConnected = status.cnc.connected;
-    cncIdle = status.cnc.state === 'Idle';
-    cncBadge.textContent = cncConnected ? `CNC: ${status.cnc.state}` : 'CNC niepodłączone';
-    cncBadge.className = cncConnected ? 'badge' : 'badge warning';
+    cncFresh = status.cnc.fresh === true;
+    cncKnown = true;
+    cncIdle = cncFresh && status.cnc.state === 'Idle';
+    if (wasConnected && !cncConnected && !actionPending) actionMessage = '';
+    const machineStates = {Idle: 'Gotowa', Jog: 'Ruch ręczny', Run: 'Ruch', Alarm: 'Alarm'};
+    cncBadge.textContent = cncConnected
+      ? `CNC połączone · ${cncFresh ? (machineStates[status.cnc.state] || status.cnc.state) : 'brak aktualnego odczytu'}`
+      : 'CNC rozłączone';
+    cncBadge.className = cncConnected && cncFresh ? 'badge' : 'badge warning';
     for (const [index, axis] of ['X', 'Y', 'Z'].entries()) {
       const value = status.cnc.position?.[index];
       document.getElementById(`position-${axis}`).textContent = Number.isFinite(value) ? value.toFixed(3) : '—';
     }
-    cncStatus.textContent = actionMessage || status.cnc.reason || 'Połączono. Ruch wyłącznie po Twoim kliknięciu.';
+    cncStatus.textContent = (actionPending && actionMessage)
+      || (!cncConnected && status.cnc.reason)
+      || (cncConnected && !cncFresh ? 'Brak aktualnego odczytu — sterowanie zablokowane.' : '')
+      || actionMessage || 'Połączono. Ruch wyłącznie po Twoim kliknięciu.';
     updateControls();
     monitorBadge.textContent = status.camera.ok ? 'Kamera działa' : 'Brak obrazu';
     monitorBadge.className = status.camera.ok ? 'badge' : 'badge warning';
@@ -150,10 +184,13 @@ async function refresh() {
     }
   } catch (error) {
     controlToken = null;
-    cncConnected = false;
+    cncKnown = false;
+    cncFresh = false;
     cncIdle = false;
     updateControls();
-    cncBadge.textContent = 'CNC: brak aktualnego odczytu';
+    cncBadge.textContent = 'CNC: stan nieznany';
+    cncBadge.className = 'badge warning';
+    cncStatus.textContent = 'Brak odpowiedzi panelu — stan CNC nieznany. Sprawdź maszynę.';
     for (const axis of ['X', 'Y', 'Z']) document.getElementById(`position-${axis}`).textContent = '—';
     monitorBadge.textContent = 'Brak połączenia';
     monitorBadge.className = 'badge warning';

@@ -1,6 +1,8 @@
 .venv/
 .env
 .local/
+# Local visual validation includes private host and camera references.
+design-qa.md
 __pycache__/
 *.pyc
 *.pem

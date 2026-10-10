@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # cnc.py
-# 2026-10-02
-# - Explicit single-owner GRBL connection and bounded manual operator commands.
+# 2026-10-10
+# - Explicit USB lifecycle, fresh status and bounded manual operator commands.
 # ---------------------------------------------------------------------------
 """Manual CNC access; never reconnect, home, unlock or start jobs implicitly."""
 
@@ -79,6 +79,7 @@ class Controller:
         self.report_time = None
         self.offset = None
         self.error = error
+        self.info = []
 
     def _read(self):
         line = self.port.readline(1025)
@@ -175,9 +176,11 @@ class Controller:
             age = None
             if self.report_time is not None:
                 age = time.monotonic() - self.report_time
-            fresh = self.port is not None and age is not None and age < 2
+            connected = self.port is not None
+            fresh = connected and age is not None and age < 2
             return {
-                "connected": fresh,
+                "connected": connected,
+                "fresh": fresh,
                 "state": self.report["state"] if fresh else None,
                 "position": self.report["position"] if fresh else None,
                 "reason": self.error,
@@ -185,10 +188,37 @@ class Controller:
                 "info": self.info,
             }
 
+    def disconnect(self):
+        """Release USB only after fresh Idle and M5 checks; never send M5."""
+        with self.lock:
+            if self.port is None:
+                return
+            try:
+                self._status()
+                if self.report["state"] != "Idle":
+                    raise ValueError("Rozłączanie wymaga bezczynnej frezarki.")
+                modal = self._line("$G")
+                spindle_off = False
+                for line in modal:
+                    if line.startswith("[GC:") and line.endswith("]"):
+                        spindle_off = "M5" in line[4:-1].split()
+                if not spindle_off:
+                    raise ValueError(
+                        "Wyłącz wrzeciono przed rozłączeniem (wymagane M5)."
+                    )
+                self._close("CNC rozłączone przez operatora.")
+            except ValueError:
+                raise
+            except Exception as error:
+                self._close(str(error))
+                raise RuntimeError(str(error)) from error
+
     def action(self, action, payload):
         """Perform one manual command; failures close and never retry USB."""
         if action == "connect":
             return self.connect()
+        if action == "disconnect":
+            return self.disconnect()
         if action == "jog_cancel":
             with self.lock:
                 if self.port is None:

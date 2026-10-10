@@ -15,13 +15,16 @@ camera or DHT22 tests; otherwise readers will compete for the same devices.
 | Stop monitoring | `systemctl --user stop ttc-monitor` | Releases camera and sensor only |
 
 The dashboard shows temperature, humidity, sample age and camera health.
-It uses a compact single-page layout sized to the desktop viewport. The top bar
-shows temperature, humidity and connection status. Tools on the left have tabs
-for manual movement, material zero, files and spindle; the camera remains visible
-on the right. Tabs support click, arrow keys, Home and End. At widths up to
-760 pixels, the camera comes first and the tools appear underneath; mobile can
-scroll. Very short desktop viewports allow scrolling inside the tools panel
-instead of cutting off controls. Tab changes do not send hardware commands.
+The light workshop layout uses warm gray surfaces and amber selection marks.
+The header shows connection status, telemetry and the explicit Connect action.
+A shared G54 axis readout sits above the camera on the left and tools on the
+right. The tools have tabs for movement, material zero, files and spindle.
+Tabs support click, arrow keys, Home and End. At widths up to 760 pixels,
+the readout, camera and tools stack vertically; the page can scroll without
+cutting off controls. Touch jog buttons are at least 48 pixels across, with Z
+separated from X/Y. Step selection uses 0.1, 1 and 10 mm radio buttons.
+Tab and step changes do not send hardware commands. Disconnected controls
+stay disabled; file execution remains unavailable.
 The manual panel opens USB only through an explicit Connect action. It owns
 one exclusive 115200-baud connection with DTR/RTS low. Opening can still reset
 hardware. This firmware emitted startup banners at about 2.6 and 5 seconds;
@@ -60,6 +63,21 @@ users access. Unknown actions are rejected. Commands are never retried after
 timeout; their outcome may be unknown. Connection errors close USB and require
 explicit reconnection. Polling alone cannot open the port.
 Hardware-free unit tests run via `bash scripts/check.sh`.
+Frontend connection-state tests run via `node tests/test_web.cjs` on a workstation
+with Node.js. They use simulated HTTP and DOM objects, never CNC hardware.
+
+The header shows `Połącz CNC` while disconnected and `Rozłącz CNC` while
+connected. Connecting and disconnecting have disabled progress states. USB
+ownership (`connected`) is separate from reading freshness (`fresh`); stale
+data hides coordinates and disables manual controls without claiming that USB
+is closed. Network failure shows an unknown CNC state and disables connection
+actions until status returns. There is no automatic reconnect.
+
+Explicit disconnect queries current status and modal state, requires Idle and
+M5, then closes USB and clears cached coordinates and identity. Busy status or
+an active/unknown spindle mode rejects disconnect and leaves USB open. The
+operator must physically confirm spindle stop: disconnect never sends M5 and
+does not stop the spindle. No settings, motion or reset commands are sent.
 Run `timeout 30s .venv/bin/python scripts/monitor-smoke.py` for a live local
 acceptance test: fresh sensor data, a valid snapshot and at least two video frames.
 This uses the existing service, not competing hardware readers.
