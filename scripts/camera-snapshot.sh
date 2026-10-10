@@ -10,6 +10,7 @@ fi
 mkdir -p "$task_root/.local/captures"
 task_capture="$(mktemp "$task_root/.local/captures/snapshot-XXXXXXXX.jpg")"
 timeout 20s rpicam-still --nopreview --camera "$task_camera" \
+    --rotation 180 \
     --timeout 2000 --width 1280 --height 720 --output "$task_capture"
 test -s "$task_capture"
 echo "$task_capture"

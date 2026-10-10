@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # server.py
-# 2026-10-02
-# - Private monitoring dashboard and explicit manual CNC operator actions.
+# 2026-10-07
+# - Private dashboard, 180-degree camera view and manual CNC operator actions.
 # ---------------------------------------------------------------------------
 """Serve monitoring and explicit manual CNC controls through Tailscale Serve."""
 
@@ -144,6 +144,7 @@ def camera_worker(state, stop, options):
         "rpicam-vid", "--nopreview", "--timeout", "0",
         "--codec", "mjpeg", "--flush", "--output", "-",
         "--camera", str(options.camera),
+        "--rotation", "180",
         "--width", "960", "--height", "540",
         "--framerate", "8", "--quality", "65",
     ]

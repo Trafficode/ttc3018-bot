@@ -24,6 +24,7 @@ bounded sensor test, camera snapshot command and a persistent monitoring service
 The browser receives Motion JPEG (MJPEG), a sequence of JPEG images, at 960 x 540
 and 8 frames per second. One `rpicam-vid` process serves all viewers. At most four
 streams run simultaneously; slow clients receive the latest frame, not a queue.
+Live video, API snapshots and standalone captures are rotated 180 degrees.
 One DHT22 worker reads every five seconds. Errors and sample ages remain visible.
 
 The service listens only on `127.0.0.1:8766`. Tailscale Serve exposes port 8765
