@@ -127,9 +127,12 @@ position rather than sending an outdated action. The backend checks still apply.
 Pause, Stop, jog cancellation and spindle off do not require a dialog. Resume
 confirmation includes an immediate Stop button while a job is active. Brief
 success messages report accepted or requested actions, not physical verification.
-Command errors remain in a visible banner until acknowledged. CNC alarm, job
+Command errors remain in the topbar notice until acknowledged. CNC alarm, job
 failure, stale CNC reports and lost panel contact remain visible while the
 underlying condition persists. Acknowledging a command message sends no command.
+The topbar owns connection state, positions, environment and the current notice.
+Its details disclosure contains session history. There are no separate tool
+status messages or floating toasts. See [frontend source and spindle preset](operator-ui.md).
 
 Frontend-only updates do not require restarting the service. Leave an active
 operator tab running during deployment; refresh after the job ends. Reloading

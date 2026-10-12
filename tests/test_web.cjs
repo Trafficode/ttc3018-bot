@@ -1,188 +1,90 @@
-// Exercise operator connection states with simulated HTTP and DOM, never USB.
+// Test shared operator state and command guards with HTTP simulation, never CNC.
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const vm = require('node:vm');
-const path = require('node:path');
-
-const elements = new Map();
-function element(id) {
-  if (!elements.has(id)) elements.set(id, {
-    textContent: '', disabled: false, className: '', listeners: {},
-    addEventListener(event, callback) { this.listeners[event] = callback; },
-    removeAttribute() {},
-    focus() {},
-    showModal() { this.open = true; },
-    close(value) { this.open = false; this.returnValue = value; this.listeners.close?.(); },
-  });
-  return elements.get(id);
-}
-const manual = element('manual');
-let status = {
-  control_token: 'test-only',
-  cnc: {connected: false, fresh: false, state: null, position: null},
-  camera: {ok: false}, environment: {ok: false},
-};
-let offline = false;
-let releaseAction;
-let heldAction = false;
-let rejectedAction = false;
-const actions = [];
-const context = vm.createContext({
-  document: {
-    getElementById: element,
-    querySelectorAll: selector => selector === '[data-manual]' ? [manual] : [],
-    querySelector: () => ({value: '0.1'}),
-  },
-  AbortSignal, Date, Number, Array, Error,
-  setTimeout() {}, // Do not run background polling in this test.
-  clearTimeout() {},
-  confirm: () => { throw new Error('Native confirmation must never be used'); },
-  fetch: async (url, options = {}) => {
+(async () => {
+  const {createController} = await import('../ui/src/controller.js');
+  let offline = false;
+  let reject = false;
+  let resolvePending;
+  let held = false;
+  const actions = [];
+  let status = {control_token: 'test-only', cnc: {connected: false, fresh: false, state: null, position: null, job: {state: 'empty'}}};
+  const mockFetch = async (url, options = {}) => {
     if (offline) throw new Error('offline');
     if (options.method === 'POST') {
-      const action = JSON.parse(options.body).action;
-      actions.push(action);
-      if (heldAction) await new Promise(resolve => { releaseAction = resolve; });
-      if (rejectedAction) return {ok: false, json: async () => ({error: 'Test controller error'})};
-      if (action === 'connect') status.cnc = {connected: true, fresh: true, state: 'Idle', position: [1, 2, 3]};
-      if (action === 'disconnect') status.cnc = {connected: false, fresh: false, state: null, position: null};
+      const payload = JSON.parse(options.body);
+      actions.push(payload);
+      if (held && payload.action !== 'job_stop') await new Promise(resolve => {resolvePending = resolve;});
+      if (reject) return {ok: false, json: async () => ({error: 'Controller test error'})};
+      if (payload.action === 'connect') Object.assign(status.cnc, {connected: true, fresh: true, state: 'Idle', position: [0,0,3]});
       return {ok: true, json: async () => ({ok: true})};
     }
-    return {ok: true, json: async () => status};
-  },
-});
-vm.runInContext(fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8'), context);
-const run = code => vm.runInContext(code, context);
-
-(async () => {
-  await run('refresh()');
-  assert.equal(element('connect-cnc').textContent, 'Połącz CNC');
-  assert.equal(element('connect-cnc').disabled, false);
-  assert.equal(manual.disabled, true);
-  heldAction = true;
-  const connecting = run('sendAction({action: "connect"})');
-  assert.equal(element('connect-cnc').textContent, 'Łączenie…');
-  assert.equal(element('connect-cnc').disabled, true);
-  releaseAction();
-  await connecting;
-  assert.equal(element('connect-cnc').textContent, 'Rozłącz CNC');
-  assert.equal(manual.disabled, false);
+    return {ok: true, json: async () => JSON.parse(JSON.stringify(status))};
+  };
+  const clock = {setTimeout() {}, clearTimeout() {}};
+  const c = createController(mockFetch, clock);
+  await c.refresh();
+  assert.equal(actions.length, 0);
+  assert.equal(c.connectReady.value, true);
+  assert.equal(c.manualReady.value, false);
+  await c.confirmedSend({action: 'connect'}, c.snapshot(), () => c.connectReady.value);
+  assert.equal(c.manualReady.value, true);
   status.cnc.fresh = false;
-  status.cnc.state = null;
-  status.cnc.position = null;
-  await run('refresh()');
-  assert.equal(element('connect-cnc').textContent, 'Rozłącz CNC');
-  assert.equal(element('connect-cnc').disabled, true);
-  assert.equal(manual.disabled, true);
+  await c.refresh();
+  assert.equal(c.manualReady.value, false);
+  assert.equal(c.connectReady.value, false);
+  assert.equal(c.notice.value.tone, 'error');
   offline = true;
-  await run('refresh()');
-  assert.equal(element('connect-cnc').textContent, 'Stan CNC nieznany');
-  assert.equal(element('connect-cnc').disabled, true);
-  assert.equal(element('position-X').textContent, '—');
-  element('connect-cnc').listeners.click();
-  assert.deepEqual(actions, ['connect']);
+  await c.refresh();
+  assert.equal(c.known.value, false);
+  assert.equal(c.manualReady.value, false);
+  assert.match(c.notice.value.text, /nieznany/);
   offline = false;
-  status.cnc = {connected: true, fresh: true, state: 'Run', position: [1, 2, 3]};
-  await run('refresh()');
-  assert.equal(element('connect-cnc').disabled, true);
-  status.cnc.state = 'Idle';
-  await run('refresh()');
-  const disconnecting = run('sendAction({action: "disconnect"})');
-  assert.equal(element('connect-cnc').textContent, 'Rozłączanie…');
-  releaseAction();
-  await disconnecting;
-  assert.equal(element('connect-cnc').textContent, 'Połącz CNC');
-  assert.equal(element('position-X').textContent, '—');
-  assert.equal(manual.disabled, true);
-  status.cnc.job = {id: 'job1', state: 'ready', name: 'sample.nc', total: 9, acknowledged: 0};
-  await run('refresh()');
-  assert.equal(element('job-file').disabled, false);
-  assert.equal(element('job-start').disabled, true);
-  status.cnc.connected = true;
   status.cnc.fresh = true;
-  status.cnc.state = 'Idle';
-  await run('refresh()');
-  assert.equal(element('job-start').disabled, false);
-  status.cnc.job.state = 'running';
-  await run('refresh()');
-  assert.equal(element('job-file').disabled, true);
-  assert.equal(element('job-start').disabled, true);
-  assert.equal(element('job-pause').disabled, false);
-  assert.equal(element('job-stop').disabled, false);
-  assert.equal(element('connect-cnc').disabled, true);
-  assert.equal(manual.disabled, true);
-  status.cnc.job.state = 'paused';
-  await run('refresh()');
-  assert.equal(element('job-pause').textContent, 'Wznów');
-  assert.equal(manual.disabled, true);
-  offline = true;
-  await run('refresh()');
-  assert.equal(element('job-pause').disabled, true);
-  assert.equal(element('job-stop').disabled, true);
-  assert.match(element('job-status').textContent, /nieznany/);
-  assert.equal(element('operator-alert').hidden, false);
-  assert.match(element('operator-alert-message').textContent, /Brak odpowiedzi/);
-
-  // Dialog cancellation never sends an action, and stale confirmation cannot start.
-  heldAction = false;
-  offline = false;
-  status.cnc = {connected: true, fresh: true, state: 'Idle', position: [1, 2, 3],
-    job: {id: 'job-a', state: 'ready', name: '<unsafe>.nc', total: 9}};
-  await run('refresh()');
+  status.cnc.job = {id: 'a', state: 'ready', name: 'a.nc'};
+  await c.refresh();
   const before = actions.length;
-  const cancelled = element('job-start').listeners.click();
-  assert.equal(element('action-dialog').open, true);
-  assert.match(element('dialog-description').textContent, /<unsafe>\.nc/);
+  const snapshot = c.snapshot();
+  status.cnc.position = [1,0,3];
+  await c.confirmedSend({action: 'job_start', job_id: 'a'}, snapshot, () => c.manualReady.value);
   assert.equal(actions.length, before);
-  element('dialog-cancel').listeners.click();
-  await cancelled;
+  assert.match(c.notice.value.text, /zmieniły/);
+  c.acknowledge();
+  const fileSnapshot = c.snapshot();
+  status.cnc.job.id = 'b';
+  await c.confirmedSend({action: 'job_start', job_id: 'a'}, fileSnapshot, () => c.manualReady.value);
   assert.equal(actions.length, before);
-  const escaped = element('job-start').listeners.click();
-  element('action-dialog').listeners.cancel({preventDefault() {}});
-  await escaped;
-  assert.equal(actions.length, before);
-  const stale = element('job-start').listeners.click();
-  status.cnc.job.id = 'job-b';
-  element('dialog-confirm').listeners.click();
-  await stale;
-  assert.equal(actions.length, before);
-  assert.match(element('operator-alert-message').textContent, /zmienił się/);
-  const moved = element('job-start').listeners.click();
-  status.cnc.position = [4, 2, 3];
-  element('dialog-confirm').listeners.click();
-  await moved;
-  assert.equal(actions.length, before);
-  const started = element('job-start').listeners.click();
-  element('dialog-confirm').listeners.click();
-  await started;
-  assert.equal(actions.at(-1), 'job_start');
-
-  // Pausing and stopping do not open a dialog; a resume dialog exposes Stop.
-  status.cnc.job.state = 'running';
-  await run('refresh()');
-  await element('job-pause').listeners.click();
-  assert.equal(actions.at(-1), 'job_pause');
-  assert.equal(element('action-dialog').open, false);
-  status.cnc.job.state = 'paused';
-  await run('refresh()');
-  const resuming = element('job-pause').listeners.click();
-  assert.equal(element('dialog-stop').hidden, false);
-  element('dialog-stop').listeners.click();
-  await resuming;
+  c.acknowledge();
+  reject = true;
+  await c.send({action: 'zero_z'});
+  reject = false;
+  await c.refresh();
+  assert.match(c.notice.value.text, /Controller test error/);
+  c.acknowledge();
+  status.cnc.job = {id: 'b', state: 'running'};
+  status.cnc.state = 'Run';
+  await c.refresh();
+  assert.equal(c.manualReady.value, false);
+  held = true;
+  const pending = c.send({action: 'job_pause', job_id: 'b'});
+  assert.equal(c.pending.value, 'job_pause');
+  await c.send({action: 'job_stop'}, true);
+  assert.equal(actions.at(-1).action, 'job_stop');
+  resolvePending();
+  await pending;
+  assert.equal(c.pending.value, null);
+  status.cnc.job = {id: 'b', state: 'stopped', error: 'Stopped'};
+  await c.refresh();
+  assert.equal(c.notice.value.dismissible, true);
+  const ackCount = actions.length;
+  c.acknowledge();
+  assert.equal(actions.length, ackCount);
+  assert.doesNotMatch(c.notice.value.text, /Program przerwany/);
+  c.stop();
+  const unowned = createController(mockFetch, clock);
+  const count = actions.length;
+  unowned.start();
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(actions.at(-1), 'job_stop');
-  assert.equal(actions.includes('job_resume'), false);
-  await element('job-stop').listeners.click();
-  assert.equal(actions.at(-1), 'job_stop');
-  assert.equal(element('action-dialog').open, false);
-
-  // Action errors survive successful status polling and require acknowledgement.
-  rejectedAction = true;
-  await run('sendAction({action: "job_pause"})');
-  rejectedAction = false;
-  await run('refresh()');
-  assert.match(element('operator-alert-message').textContent, /Test controller error/);
-  element('dismiss-action-error').listeners.click();
-  assert.doesNotMatch(element('operator-alert-message').textContent, /Test controller error/);
-  console.log('Connection/job states, dialog cancellation/staleness, immediate Stop/Pause and persistent errors passed.');
-})().catch(error => { console.error(error); process.exitCode = 1; });
+  unowned.stop();
+  assert.equal(actions.length, count, 'An observer never renews or starts a job');
+  console.log('Shared state, freshness, stale confirmations, persistent errors, immediate Stop and passive observer: PASS');
+})().catch(error => {console.error(error); process.exitCode = 1;});

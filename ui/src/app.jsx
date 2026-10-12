@@ -1,0 +1,109 @@
+import {render} from 'preact';
+import {useEffect, useLayoutEffect, useRef, useState} from 'preact/hooks';
+import {IconPlugConnected, IconPlugConnectedX, IconTemperature, IconDroplet, IconInfoCircle, IconAlertTriangle, IconChevronDown, IconChevronUp, IconArrowsMove, IconFocus2, IconFileCode, IconTool, IconPlayerPlay, IconPlayerPause, IconPlayerStop, IconFolder, IconSettings, IconCamera, IconPower} from '@tabler/icons-preact';
+import {createController} from './controller.js';
+import './style.css';
+
+const controller = createController();
+const tabs = [{id: 'move', label: 'Ruch', icon: IconArrowsMove}, {id: 'zero', label: 'Zero', icon: IconFocus2}, {id: 'file', label: 'Plik', icon: IconFileCode}, {id: 'spindle', label: 'Wrzeciono', icon: IconTool}];
+const machineNames = {Idle: 'Bezczynne', Run: 'Praca', Jog: 'Ruch ręczny', Alarm: 'Alarm'};
+const jobNames = {ready: 'Gotowy plik', running: 'Praca', draining: 'Kończenie ruchu', pausing: 'Zatrzymywanie', paused: 'Pauza', resuming: 'Wznawianie', completed: 'Zakończono', stopped: 'Przerwano', failed: 'Błąd'};
+
+function Button({icon: Icon, children, ...props}) { return <button type="button" {...props}>{Icon && <Icon size={19} aria-hidden="true"/>}<span>{children}</span></button>; }
+function Header({onRequest}) {
+  const cnc = controller.cnc.value;
+  const status = controller.data.value;
+  const notice = controller.notice.value;
+  const [details, setDetails] = useState(false);
+  const badge = !controller.known.value ? 'Stan nieznany' : cnc.connected ? `CNC połączone · ${cnc.fresh ? (machineNames[cnc.state] || cnc.state) : 'brak odczytu'}` : 'CNC rozłączone';
+  const Icon = cnc.connected ? IconPlugConnected : IconPlugConnectedX;
+  const environment = status?.environment;
+  return <header class="topbar">
+    <div class="brand"><div><h1>Bark Beetle</h1><span>TTC3018</span></div><span id="cnc-badge" class={`connection ${!controller.known.value || (cnc.connected && !cnc.fresh) ? 'unknown' : cnc.connected ? 'connected' : 'disconnected'}`}><Icon size={20} aria-hidden="true"/>{badge}</span></div>
+    <section class="positions" aria-label="Pozycja względem zera materiału"><p>Pozycja (G54)</p><div class="axes">{['X','Y','Z'].map((axis,index) => <div key={axis}><strong>{axis}</strong><output id={`position-${axis}`}>{controller.known.value && cnc.connected && cnc.fresh && Number.isFinite(cnc.position?.[index]) ? cnc.position[index].toFixed(3) : '—'}</output><small>mm</small></div>)}</div></section>
+    <div class="environment" aria-label="Warunki otoczenia"><div><span>Temperatura</span><strong><IconTemperature size={21} aria-hidden="true"/>{!controller.offline.value && environment?.ok ? `${environment.temperature_c.toFixed(1)} °C` : '—'}</strong></div><div><span>Wilgotność</span><strong><IconDroplet size={21} aria-hidden="true"/>{!controller.offline.value && environment?.ok ? `${environment.humidity_percent.toFixed(1)} %` : '—'}</strong></div></div>
+    {controller.active.value ? <Button id="top-job-stop" class="stop connect" icon={IconPlayerStop} disabled={!controller.known.value} onClick={() => controller.send({action: 'job_stop'},true)}>Przerwij</Button> : <Button id="connect-cnc" class="primary connect" icon={IconPlugConnected} disabled={!controller.connectReady.value} onClick={() => onRequest(cnc.connected ? 'disconnect' : 'connect')}>{controller.pending.value === 'connect' ? 'Łączenie…' : controller.pending.value === 'disconnect' ? 'Rozłączanie…' : cnc.connected ? 'Rozłącz CNC' : 'Połącz CNC'}</Button>}
+    <section id="station-notice" class={`station-notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'} aria-live={notice.tone === 'error' ? 'assertive' : 'polite'} aria-atomic="true"><IconInfoCircle size={23} aria-hidden="true"/><p>{notice.text}</p>{notice.dismissible && <button type="button" class="text-button" onClick={controller.acknowledge}>Rozumiem</button>}<button type="button" class="text-button details-toggle" aria-label="Szczegóły stanu stanowiska" aria-expanded={details} aria-controls="station-details" onClick={() => setDetails(!details)}>Szczegóły {details ? <IconChevronUp size={17}/> : <IconChevronDown size={17}/>}</button></section>
+    {details && <section id="station-details" class="station-details"><p>Odczyt CNC: {cnc.fresh ? 'aktualny' : 'nieaktualny'} · Kamera: {status?.camera?.ok ? 'dostępna' : 'niedostępna'} · Czujnik: {environment?.ok ? `odczyt sprzed ${environment.age_seconds?.toFixed(1)} s` : 'brak odczytu'}</p><ol>{controller.events.value.length ? controller.events.value.map(event => <li><time>{event.time}</time>{event.text}</li>) : <li>Brak zdarzeń w tej sesji przeglądarki.</li>}</ol></section>}
+  </header>;
+}
+
+function Confirmation({request, onClose, onConfirm}) {
+  const ref = useRef();
+  useLayoutEffect(() => { if (request) { ref.current.showModal(); ref.current.querySelector('#dialog-cancel').focus(); } }, [request]);
+  return <dialog ref={ref} id="action-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-description" onCancel={event => {event.preventDefault(); onClose();}}>
+    {request && <><div class="dialog-heading"><IconAlertTriangle size={32} aria-hidden="true"/><div><small>Potwierdzenie operatora</small><h2 id="dialog-title">{request.title}</h2></div></div><p id="dialog-description">{request.description}</p><p class="muted">Polecenie zostanie wysłane dopiero po potwierdzeniu.</p><div class="button-row"><Button id="dialog-cancel" onClick={onClose}>Anuluj</Button><Button id="dialog-confirm" class="primary" onClick={onConfirm}>{request.label}</Button></div>{controller.active.value && <Button class="stop" id="dialog-stop" icon={IconPlayerStop} onClick={() => {onClose(); controller.send({action: 'job_stop'}, true);}}>Przerwij program teraz</Button>}</>}
+  </dialog>;
+}
+
+function Camera() {
+  const ok = !controller.offline.value && controller.data.value?.camera?.ok;
+  const [collapsed, setCollapsed] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { if (ok) setFailed(false); }, [ok, controller.data.value]);
+  return <section class={`camera-panel panel ${collapsed ? 'collapsed' : ''}`} aria-labelledby="camera-heading"><div class="panel-heading"><h2 id="camera-heading">Podgląd na żywo</h2><div class="camera-actions"><Button aria-label={paused ? 'Wznów podgląd' : 'Wstrzymaj podgląd'} title={paused ? 'Wznów podgląd' : 'Wstrzymaj podgląd'} icon={paused ? IconPlayerPlay : IconPlayerPause} onClick={() => {setPaused(!paused); setFailed(false);}}/><Button class="collapse-camera" aria-label={collapsed ? 'Rozwiń kamerę' : 'Zwiń kamerę'} icon={collapsed ? IconChevronDown : IconChevronUp} onClick={() => setCollapsed(!collapsed)}/></div></div>{!collapsed && <><div class="camera-stage">{ok && !paused && !failed ? <img id="camera" src="/camera.mjpg" alt="Obraz z kamery stanowiska CNC" onError={() => setFailed(true)}/> : <p><IconCamera size={28}/>{paused ? 'Podgląd wstrzymany' : 'Kamera niedostępna'}</p>}</div><div class="camera-meta"><span>{ok && !paused && !failed ? '960 × 540 · 8 kl./s' : 'Podgląd stanowiska'}</span><a href="/camera.jpg" target="_blank" rel="noopener">Zdjęcie</a></div></>}</section>;
+}
+
+function App() {
+  const [tab, setTab] = useState('move');
+  const [step, setStep] = useState(0.1);
+  const [feed, setFeed] = useState('100');
+  const [power, setPower] = useState('300');
+  const [request, setRequest] = useState(null);
+  const inputRef = useRef();
+  const opener = useRef();
+  const cnc = controller.cnc.value;
+  const job = controller.job.value;
+  const manual = controller.manualReady.value;
+  const free = controller.known.value && !controller.pending.value && !controller.active.value;
+  const powerValid = Number.isInteger(Number(power)) && Number(power) >= 1 && Number(power) <= 1000;
+  const bounds = job.bounds_mm;
+  useEffect(() => {controller.start(); return controller.stop;}, []);
+  function ask(action) {
+    if (request) return;
+    const id = job.id;
+    const payload = {action};
+    const definitions = {
+      connect: ['Połączyć CNC?', 'Upewnij się, że frezarka stoi, wrzeciono jest wyłączone i jesteś przy stanowisku. Otwarcie USB może zresetować sterownik.', 'Połącz CNC', () => controller.connectReady.value && !controller.cnc.value.connected],
+      disconnect: ['Rozłączyć CNC?', 'Frezarka musi być bezczynna, a wrzeciono fizycznie wyłączone. Rozłączenie USB samo nie zatrzymuje wrzeciona.', 'Rozłącz CNC', () => controller.manualReady.value],
+      job_start: ['Uruchomić program?', `${job.name}\n\nSprawdź narzędzie, zakres programu, mocowania, zero materiału oraz prześwit. Program może uruchomić wrzeciono. Pozostań przy wyłączniku.`, 'Uruchom program', () => controller.manualReady.value && controller.job.value.id === id],
+      job_resume: ['Wznowić program?', 'Wznowienie uruchomi ruch narzędzia. Sprawdź maszynę, narzędzie i wrzeciono.', 'Wznów program', () => controller.known.value && controller.cnc.value.connected && controller.cnc.value.fresh && controller.job.value.state === 'paused' && controller.job.value.id === id],
+      zero_xy: ['Ustawić zero X/Y?', 'Aktualna pozycja zostanie zapisana jako zero materiału. Polecenie nie przesuwa osi.', 'Ustaw zero', () => controller.manualReady.value],
+      zero_z: ['Ustawić zero Z?', 'Aktualna wysokość zostanie zapisana jako powierzchnia materiału. Uwzględnij grubość papieru, jeśli był używany. Polecenie nie przesuwa osi.', 'Ustaw zero', () => controller.manualReady.value],
+      spindle_on: ['Włączyć wrzeciono?', `Wartość S: ${power} / 1000. Usuń ręce i luźne przedmioty ze strefy pracy. To skala sterownika, nie pomiar RPM.`, 'Włącz wrzeciono', () => controller.manualReady.value],
+    };
+    const definition = definitions[action];
+    if (!definition) return;
+    if (action.startsWith('job_')) Object.assign(payload, {job_id: id, confirmed: true});
+    if (action === 'spindle_on') {if (!powerValid) return; payload.power = Number(power);}
+    opener.current = document.activeElement;
+    setRequest({payload, title: definition[0], description: definition[1], label: definition[2], valid: definition[3], before: controller.snapshot()});
+  }
+  function close() {setRequest(null); document.getElementById('action-dialog')?.close(); opener.current?.focus();}
+  async function upload(event) {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+    try {if (file.size > 1024 * 1024) throw new Error('Maksymalny rozmiar pliku to 1 MiB'); await controller.send({action: 'job_load', name: file.name, content: await file.text()});}
+    catch (cause) {controller.error(`Nie wczytano pliku: ${cause.message}`);}
+    finally {if (inputRef.current) inputRef.current.value = '';}
+  }
+  function move(axis, direction) {controller.send({action: 'jog', axis, distance: step * direction, feed: Number(feed)});}
+  function tabKey(event, index) {
+    let next;
+    if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+    else if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = tabs.length - 1;
+    else return;
+    event.preventDefault(); setTab(tabs[next].id); document.getElementById(`tab-${tabs[next].id}`).focus();
+  }
+  return <main class="shell"><Header onRequest={ask}/><div class="workspace"><Camera/><section class="operator panel"><div class="tabs" role="tablist" aria-label="Narzędzia operatora">{tabs.map((item,index) => <button id={`tab-${item.id}`} role="tab" type="button" aria-selected={tab === item.id} aria-controls={`tool-${item.id}`} tabIndex={tab === item.id ? 0 : -1} onClick={() => setTab(item.id)} onKeyDown={event => tabKey(event,index)}><item.icon size={20} aria-hidden="true"/><span>{item.label}</span></button>)}</div>
+    <div class="tool-scroll"><section id={`tool-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`} tabIndex={0}>
+    {tab === 'move' && <><h2>Ręczne przesuwanie</h2><fieldset disabled={!manual}><div class="motion-settings"><div><label>Krok</label><div class="step-options">{[0.1,1,10].map(value => <label><input type="radio" name="step" value={value} checked={step === value} onChange={() => setStep(value)}/><span>{String(value).replace('.',',')} mm</span></label>)}</div></div><label>Prędkość · mm/min<input id="jog-feed" type="number" min="1" max="300" value={feed} onInput={event => setFeed(event.currentTarget.value)}/></label></div><div class="jog-controls"><div class="xy-pad"><Button class="up" onClick={() => move('Y',1)}>Y +</Button><Button class="left" onClick={() => move('X',-1)}>X −</Button><span>X / Y</span><Button class="right" onClick={() => move('X',1)}>X +</Button><Button class="down" onClick={() => move('Y',-1)}>Y −</Button></div><div class="z-pad"><Button onClick={() => move('Z',1)}>Z +</Button><span>Oś Z</span><Button onClick={() => move('Z',-1)}>Z −</Button></div></div></fieldset><Button id="cancel-jog" class="stop" icon={IconPlayerStop} disabled={!controller.known.value || !cnc.connected || controller.active.value} onClick={() => controller.send({action: 'jog_cancel'},true)}>Przerwij ruch</Button><p class="hint">Bez krańcówek: pilnuj końca zakresu. Zacznij od 0,1 mm.</p></>}
+    {tab === 'zero' && <><h2>Zero materiału</h2><p class="hint">Ustaw narzędzie w punkcie odniesienia. Dla Z uwzględnij grubość papieru.</p><div class="button-row"><Button disabled={!manual} onClick={() => ask('zero_xy')}>Zero X / Y</Button><Button disabled={!manual} onClick={() => ask('zero_z')}>Zero Z</Button></div></>}
+    {tab === 'file' && <><h2>Plik do frezowania</h2><div class="file-choice"><IconFileCode size={27} aria-hidden="true"/><div class="file-name"><strong>{job.name || 'Nie wybrano pliku'}</strong><small>{job.name ? `${job.total} poleceń · F ≤ ${job.max_feed} mm/min · S ≤ ${job.max_power}` : 'G-code · do 1 MiB'}</small></div><Button icon={IconFolder} disabled={!free} onClick={() => inputRef.current.click()}>Wybierz plik</Button><input ref={inputRef} id="job-file" class="file-input" type="file" accept=".nc,.ngc,.gcode,.tap" disabled={!free} onChange={upload}/></div>{bounds && <pre class="job-bounds" aria-label="Zakres programu">{['X','Y','Z'].map(axis => `${axis}: ${bounds[axis].map(value => value == null ? '—' : value.toFixed(3)).join(' … ')} mm`).join('\n')}</pre>}<div class="progress-label"><span>Postęp programu</span><span>{job.acknowledged || 0} / {job.total || 0}</span></div><progress id="job-progress" max={job.total || 1} value={job.acknowledged || 0} aria-label="Polecenia przyjęte przez sterownik"/><div class="job-actions button-row"><Button id="job-start" class="primary" icon={IconPlayerPlay} disabled={!manual || !job.id} onClick={() => ask('job_start')}>Start</Button><Button id="job-pause" icon={job.state === 'paused' ? IconPlayerPlay : IconPlayerPause} disabled={!controller.known.value || !cnc.connected || !cnc.fresh || !['running','draining','paused'].includes(job.state)} onClick={() => job.state === 'paused' ? ask('job_resume') : controller.send({action: 'job_pause', job_id: job.id},true)}>{job.state === 'paused' ? 'Wznów' : 'Pauza'}</Button><Button id="job-stop" class="stop" icon={IconPlayerStop} disabled={!controller.known.value || !controller.active.value} onClick={() => controller.send({action: 'job_stop'},true)}>Stop</Button></div><details class="parameters"><summary><IconSettings size={19}/>Parametry programu<IconChevronDown size={17}/></summary><div><p>Stan zadania: {jobNames[job.state] || 'Brak zadania'}. {job.source_line ? `Linia pliku: ${job.source_line}.` : ''}</p><p>G21 · G90 · G94 · G54 · G0/G1. S to skala sterownika, nie RPM.</p><p>Pauza nie wyłącza wrzeciona. Stop resetuje sterownik; sprawdź wrzeciono i zero. Utrata kontaktu z prowadzącą przeglądarką powoduje pauzę po 8 s.</p><Button disabled={!free || !job.id} onClick={() => controller.send({action: 'job_clear'})}>Usuń plik</Button></div></details></>}
+    {tab === 'spindle' && <><h2>Wrzeciono</h2><label for="spindle-range" class="slider-label">S wrzeciona · 1–1000</label><div class="spindle-setting"><input id="spindle-range" type="range" min="1" max="1000" step="1" value={powerValid ? power : 1} disabled={!manual} onInput={event => setPower(event.currentTarget.value)}/><input id="spindle-power" type="number" aria-label="Wartość S wrzeciona" min="1" max="1000" step="1" value={power} disabled={!manual} onInput={event => setPower(event.currentTarget.value)}/></div><p class="hint">Skala sterownika, nie pomiar RPM.</p><div class="button-row spindle-actions"><Button class="primary" icon={IconPlayerPlay} disabled={!manual || !powerValid} onClick={() => ask('spindle_on')}>Włącz</Button><Button icon={IconPlayerStop} disabled={!manual} onClick={() => controller.send({action: 'spindle_off'})}>Wyłącz</Button></div><p class="hint">Wartość zostanie wysłana po kliknięciu Włącz.</p></>}
+    </section></div></section></div><footer class="safety"><IconPower size={22} aria-hidden="true"/><p>W razie niebezpieczeństwa użyj fizycznego wyłącznika maszyny.</p></footer><Confirmation request={request} onClose={close} onConfirm={() => {const current = request; close(); controller.confirmedSend(current.payload,current.before,current.valid);}}/></main>;
+}
+render(<App/>, document.getElementById('app'));
