@@ -20,6 +20,9 @@ Arcs, probing, homing, unlock, settings, macros, incremental/inch modes, canned
 drill cycles, T/M6 and coordinate-offset changes are rejected. Use a linear GRBL
 CAM post and separate files per tool. Add G54 to a reviewed header if CAM omits it.
 
+See [CAM export preparation](cam-export.md) for the export contract and a
+spindle-off octagon format example. Actual CAM output must be checked separately.
+
 Bounds describe programmed endpoints, not tool diameter or the initial move from
 the current position. Coordinates are restricted to ±300 X, ±180 Y and ±20 Z mm.
 These are application limits, not calibrated travel limits or collision detection.
