@@ -1,92 +1,126 @@
 {
   "source_of_truth": "Autodesk Fusion",
   "document": "PiloMill-L",
+  "layout": "sliding-thread-insert-top-ribs-v2",
+  "units": "mm",
   "document_saved": true,
   "unsaved_changes": false,
-  "fusion_version": "2705.1.25",
-  "units": "mm",
+  "timeline_healthy": true,
+  "timeline_count": 146,
   "parts": [
     {
-      "name": "StandBase",
-      "volume_mm3": 218805.76,
-      "min_mm": [
-        0.0,
-        0.0,
+      "name": "IntegralStand",
+      "volume_mm3": 224244.69970091587,
+      "local_min_mm": [
+        -54.0,
+        -65.8,
         0.0
       ],
-      "max_mm": [
-        180.0,
-        140.0,
-        10.0
-      ]
-    },
-    {
-      "name": "StandPole",
-      "volume_mm3": 88873.93364445781,
-      "min_mm": [
-        65.0,
-        -4.551914400963142e-14,
-        1.9999999999999984
-      ],
-      "max_mm": [
-        115.0,
-        8.000000000000007,
-        237.0
+      "local_max_mm": [
+        94.0,
+        14.2,
+        220.0
       ]
     },
     {
       "name": "EquipmentHead",
-      "volume_mm3": 77450.51594632327,
-      "min_mm": [
-        18.528707934360998,
-        7.999999999999998,
-        135.1968737244363
+      "volume_mm3": 57209.28654046037,
+      "local_min_mm": [
+        0.0,
+        0.0,
+        0.0
       ],
-      "max_mm": [
-        159.78081901867228,
-        123.0,
-        225.17789512739432
+      "local_max_mm": [
+        130.0,
+        105.0,
+        14.199999999998628
       ]
     },
     {
       "name": "ClampKnob",
-      "volume_mm3": 8105.497580563771,
-      "min_mm": [
-        72.0,
-        -11.0,
-        165.99999999999997
+      "volume_mm3": 11675.659747016332,
+      "local_min_mm": [
+        -18.0,
+        -16.0,
+        0.0
       ],
-      "max_mm": [
-        108.0,
-        -0.999999999999992,
-        198.0
+      "local_max_mm": [
+        18.0,
+        16.0,
+        34.0
+      ]
+    },
+    {
+      "name": "ThreadInsert",
+      "volume_mm3": 26664.921331579026,
+      "local_min_mm": [
+        44.39999999999999,
+        0.0,
+        -38.6
+      ],
+      "local_max_mm": [
+        85.6,
+        38.0,
+        3.8000000000000034
       ]
     }
   ],
-  "timeline_healthy": true,
-  "rear_edge_offset_mm": 4.551914400963142e-14,
+  "interference_pairs": 0,
+  "sha256": {
+    "PiloMill-L.f3d": "434934e1f6883be3b3ff12ca5dee3e4609e465bee3c037946fa875f0c9d53bc2",
+    "PiloMill-L.step": "4cdf3bd0b1a2658eae5b9f616e52dbc8915a76558867ea38de25802c0e640d17"
+  },
+  "head_plate_size_mm": [
+    130,
+    105,
+    4
+  ],
+  "stand_height_mm": 220,
+  "top_ribs": {
+    "count": 6,
+    "width_mm": 3,
+    "height_above_plate_mm": 4
+  },
+  "top_ribs_keepouts": "RPi outline, pegs and insertion guide unchanged",
+  "warping_resistance_physically_validated": false,
+  "cool_before_removal": "Let both plate and bed reach room temperature",
+  "front_lip_height_mm": 40,
+  "modeled_thread": "M14x2",
+  "female_thread_geometry": "Exact native BRep copy, scale 1.03 radial",
+  "guide": "Top-open dovetail; insertion from front, closed rear end",
+  "slide_clearance_mm": "0.3-0.35 provisional",
+  "retention": "Integral release clip; release through underside window",
+  "clip_length_mm": 14,
+  "clip_thickness_mm": 1.5,
+  "clip_catch_deflection_mm": 0.3,
+  "metal_fasteners_required": false,
+  "installation_requires_external_fastening": true,
+  "physical_slide_and_clip_fit_validated": false,
+  "physical_thread_fit_validated": false,
+  "clamp_strength_validated": false,
+  "thermal_validated": false,
+  "slicer_validated": false,
+  "prior_slicer_jobs": "Obsolete for the revised equipment plate",
   "parameters": {
     "LBaseThickness": "10 mm",
     "LSocketFloor": "2 mm",
     "LSocketWidth": "30.4 mm",
-    "LSocketDepth": "8.2 mm"
-  },
-  "sketches": [
-    {
-      "name": "Fill original socket",
-      "fully_constrained": true
-    },
-    {
-      "name": "Rear-edge socket",
-      "fully_constrained": true
-    }
-  ],
-  "physical_fit_validated": false,
-  "stability_validated": false,
-  "thermal_validated": false,
-  "slicer_validated": false,
-  "sha256": {
-    "PiloMill-L.f3d": "5e197ed71de6a1fa21c6c2de3b90d91ca40115f56d9f46d826690968a05875fa",
-    "PiloMill-L.step": "9257f1cb245d371811d7f2d2b6f7c929001c11b451e08c5edf87cf4170055d04"
+    "LSocketDepth": "8.2 mm",
+    "ShortBaseDepth": "80 mm",
+    "ShortBaseWidth": "180 mm",
+    "FrontLipHeight": "40 mm",
+    "FrontLipThickness": "6 mm",
+    "PlateSideReach": "140 mm",
+    "StandHeight": "220 mm",
+    "SlotTopCenter": "203 mm",
+    "SlotBottomCenter": "147 mm",
+    "PrintedSlotWidth": "14.8 mm",
+    "PrintedThreadDiameter": "14 mm",
+    "PrintedThreadPitch": "2 mm",
+    "FemaleRadialScale": "1.03",
+    "ThreadEngagement": "16 mm",
+    "UprightWidth": "40 mm",
+    "TrayRibHeight": "4 mm",
+    "TrayRibWidth": "3 mm"
   }
 }

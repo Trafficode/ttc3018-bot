@@ -1,0 +1,10 @@
+{
+  "result": "PASS",
+  "model": "nominal flat copper, zero runout",
+  "desired_copper_components": 10,
+  "connected_background_components": 1,
+  "isolated_waste_islands": 0,
+  "maximum_feature_area_loss_mm2": 0.003867684569577534,
+  "geometry_tolerance_note": "CAM tolerance 0.002 mm; rounded corners",
+  "physical_acceptance": "UNVERIFIED"
+}

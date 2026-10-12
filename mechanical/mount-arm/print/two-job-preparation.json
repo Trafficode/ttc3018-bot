@@ -1,0 +1,50 @@
+{
+  "cad_revision": "sliding-thread-insert-top-ribs-v2",
+  "cad_sha256": "434934e1f6883be3b3ff12ca5dee3e4609e465bee3c037946fa875f0c9d53bc2",
+  "cad_modified": true,
+  "printer": "Anycubic Kobra X 0.4 nozzle",
+  "filament": "Anycubic PLA+",
+  "layer_height_mm": 0.2,
+  "wall_loops": 5,
+  "infill_percent": 30,
+  "top_shell_layers": 5,
+  "bottom_shell_layers": 5,
+  "brim_width_mm": 5,
+  "print_sequence": "by layer",
+  "projects": [
+    {
+      "file": "01-PiloMill-RPi-zebra-i-pokretlo.3mf",
+      "sha256": "aa18f59896fb7d7f53b316046a5d93bfda828001189ee282c89bd352c69e1989",
+      "parts": ["EquipmentHead", "ClampKnob", "ThreadInsert"],
+      "plate_count": 1,
+      "supports": "disabled",
+      "filament_index": 2,
+      "filament_colour": "#6F6F6F",
+      "slicer_preview_checked": true,
+      "estimated_time": "2h 8m 17s",
+      "estimated_mass_g": 77.21
+    },
+    {
+      "file": "02-PiloMill-podstawa-i-stojak.3mf",
+      "sha256": "607823718b6270c17d0648131577e6d9973523093484a6a92ad9014d97d76d1e",
+      "parts": ["IntegralStand"],
+      "geometry_unchanged_from_previous_revision": true,
+      "plate_count": 1,
+      "supports": "disabled",
+      "estimated_time": "4h 45m 25s",
+      "estimated_mass_g": 165.44
+    }
+  ],
+  "geometry_embedded": true,
+  "sliced_preview_checked": true,
+  "warping_resistance_physically_validated": false,
+  "cool_before_removal": "Wait until both bed and part reach room temperature",
+  "native_archive_reopened": true,
+  "physical_slide_and_clip_fit_validated": false,
+  "watertight_meshes": true,
+  "physical_fit_validated": false,
+  "strength_validated": false,
+  "unsupported_thread_and_slot_bridge_tested": false,
+  "print_started": false,
+  "note": "Independent jobs for manual operator review and start. Check slide, clip, thread and peg fit before the larger stand print. Verify physical ACE slot 2 in the operator print-start dialog."
+}

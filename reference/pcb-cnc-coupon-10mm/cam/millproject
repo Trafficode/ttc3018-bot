@@ -1,0 +1,34 @@
+# Preliminary first-coupon recipe, not mechanically calibrated.
+# V-bit: 30 degree included angle, 0.1 mm flat tip.
+# Effective diameter at 0.05 mm depth = 0.126794919 mm.
+front=../manufacturing/cnc-coupon-10mm-F_Cu.gtl
+front-output=isolation-raw.ngc
+output-dir=raw
+metric=true
+metricoutput=true
+zero-start=false
+x-offset=0
+y-offset=0
+nog64=true
+nog91-1=true
+nog81=true
+nom6=true
+al-front=false
+al-back=false
+mill-diameters=0.126795
+isolation-width=0.8
+milling-overlap=50%
+zwork=-0.05
+mill-infeed=0.05
+mill-feed=100
+mill-vertfeed=30
+# Numeric controller S word, not a measured 1000 RPM spindle speed.
+mill-speed=1000
+zsafe=3
+zchange=3
+zchange-absolute=false
+spinup-time=2
+spindown-time=0
+tolerance=0.002
+optimise=0.002
+single-thread=true

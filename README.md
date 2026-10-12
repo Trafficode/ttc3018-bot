@@ -8,6 +8,8 @@ DHT22 on GPIO17 and private Tailscale access.
 - [Run checks and troubleshoot](docs/development/operations.md)
 - [Verified hardware and software](docs/reference/baseline.md)
 - [System boundaries and next components](docs/architecture/system.md)
+- [10 mm PCB starter coupon and CAM files](docs/reference/pcb-cnc-coupon-10mm-cam.md)
+- [40 mm PCB reference coupon](docs/reference/pcb-cnc-coupon-40mm.md)
 
 PiloMill provides camera video, environmental telemetry and explicit manual CNC
 controls through private Tailscale Serve. The operator connects USB, jogs, sets

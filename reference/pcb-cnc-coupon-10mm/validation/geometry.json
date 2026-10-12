@@ -1,0 +1,38 @@
+{
+  "result": "PASS",
+  "kicad_version": "10.0.6",
+  "toolkit_revision": "b49f118ec6dc9237206e67b1a3710410133cecdf",
+  "outline_mm": [
+    10.0,
+    10.0
+  ],
+  "samples": [
+    {
+      "width_mm": 0.2,
+      "gap_mm": 0.2
+    },
+    {
+      "width_mm": 0.5,
+      "gap_mm": 0.5
+    },
+    {
+      "width_mm": 0.7,
+      "gap_mm": 0.7
+    }
+  ],
+  "via": {
+    "across_flats_mm": 2,
+    "drill_mm": 0.8,
+    "minimum_copper_ring_mm": 0.6,
+    "corners": 8
+  },
+  "origin": "lower-left outline corner, common export datum",
+  "erc_parity_simulation": "N/A: passive board-only coupon",
+  "physical_milling": "UNVERIFIED",
+  "sha256": {
+    "pcb-cnc-coupon-10mm/cnc-coupon-10mm.kicad_pcb": "455e09ab695630e6e3200d9df726bcae1b55fa0034add770dd496781a42a0881",
+    "pcb-cnc-coupon-10mm/cnc-coupon-10mm.kicad_pro": "01e53ff2e132ef6ab1164fc7c571e21363763ed6a241db4ec04271a027654c3b",
+    "pcb-cnc-coupon-40mm/tools/build_coupon.py": "721e89bbf6379e496b5e1f74a2e4dc1827bb7b6a23d771ad9d19613fc7551efe",
+    "pcb-cnc-coupon-10mm/tools/build_coupon.py": "57d057ba67c342b9342c59f2dde0fedc6cb989a965ec61f188f6c4d8ce4f0644"
+  }
+}

@@ -1,0 +1,107 @@
+(footprint "Gap_0.3mm_V"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(property "Reference" "G6V"
+		(at 0 0 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "c332fcf5-5503-4654-a667-2c221c0354e3")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Value" "Gap_0.3mm_V"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "a6442284-1aeb-497a-aaaf-fb21ac308ca4")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "52b2bd55-84e5-499d-8ce4-29c74c1a0a6c")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "ed88110d-2b7d-4b7b-bd34-b696df9ad66c")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr exclude_from_pos_files exclude_from_bom)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_line
+		(start -0.949999 -1.2)
+		(end 0.949999 -1.2)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(layer "F.CrtYd")
+		(uuid "47498ee7-0694-4317-9a37-9e6dea8aa718")
+	)
+	(fp_line
+		(start -0.949999 1.2)
+		(end -0.949999 -1.2)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(layer "F.CrtYd")
+		(uuid "dea2f4de-0e65-42af-ae77-6ed8223c5bd3")
+	)
+	(fp_line
+		(start 0.949999 -1.2)
+		(end 0.949999 1.2)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(layer "F.CrtYd")
+		(uuid "af5c793f-a95b-4388-bd98-2029539cc393")
+	)
+	(fp_line
+		(start 0.949999 1.2)
+		(end -0.949999 1.2)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(layer "F.CrtYd")
+		(uuid "707a40d8-6d0e-4e37-88e5-296b9238d543")
+	)
+	(pad "1" smd rect
+		(at -0.449999 0)
+		(size 0.6 2)
+		(layers "F.Cu" "F.Mask")
+		(thermal_bridge_angle 45)
+		(uuid "6ba5c128-f1b1-4656-91c3-a1cc82d88719")
+	)
+	(pad "2" smd rect
+		(at 0.449999 0)
+		(size 0.6 2)
+		(layers "F.Cu" "F.Mask")
+		(thermal_bridge_angle 45)
+		(uuid "8dda01f9-f818-4823-8c2e-dce584021e69")
+	)
+	(embedded_fonts no)
+)

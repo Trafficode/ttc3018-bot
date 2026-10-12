@@ -1,9 +1,8 @@
 # ---------------------------------------------------------------------------
-# checkpoint_fusion.py
-# 2026-10-04
-# - Save the active PiloMill-L Fusion design and export native checkpoints.
+# checkpoint_sliding_insert.py
+# 2026-10-06
+# - Validate the sliding mount and the plate's electronics-side reinforcement.
 # ---------------------------------------------------------------------------
-"""Execute inside Fusion; never rebuild this design from another CAD system."""
 
 import hashlib
 import json
@@ -13,83 +12,98 @@ import adsk.core
 import adsk.fusion
 
 
-def run(_context: str):
-    """Save the recognized active design and export F3D, STEP and validation.
-
-    Fusion internal lengths are centimeters. Reports use millimeters and cubic
-    millimeters. Run outside interactive commands. No geometry is changed.
-    """
+def run(_context):
+    """Check solids and clearances, then export the saved native revision."""
     app = adsk.core.Application.get()
     document = app.activeDocument
     design = adsk.fusion.Design.cast(app.activeProduct)
-    if design is None or document.name != "PiloMill-L" or not document.isSaved:
-        raise ValueError("Open the saved PiloMill-L design before checkpointing")
     root = design.rootComponent
-    expected = {"StandBase", "StandPole", "EquipmentHead", "ClampKnob"}
-    found = {occ.component.name for occ in root.occurrences}
-    if found != expected or root.bRepBodies.count:
-        raise ValueError("Active model structure differs; inspect before export")
+    assert document.name == "PiloMill-L" and document.isSaved
+    assert root.attributes.itemByName("PiloMill", "layout").value == (
+        "sliding-thread-insert-top-ribs-v2")
+    names = {"IntegralStand", "EquipmentHead", "ClampKnob", "ThreadInsert"}
+    assert {o.component.name for o in root.occurrences} == names
+    for feature in design.timeline:
+        assert feature.healthState == (
+            adsk.fusion.FeatureHealthStates.HealthyFeatureHealthState), (
+                feature.name + ": " + feature.errorOrWarningMessage)
+    entities = adsk.core.ObjectCollection.create()
     parts = []
+    meshes = []
     for occurrence in root.occurrences:
-        if occurrence.bRepBodies.count != 1:
-            raise ValueError("Expected one solid per stand component")
-        body = occurrence.bRepBodies.item(0)
-        if not body.isSolid:
-            raise ValueError("Non-solid component: " + occurrence.name)
+        component = occurrence.component
+        assert component.bRepBodies.count == 1
+        body = component.bRepBodies.item(0)
+        assert body.isSolid
         bounds = body.boundingBox
         parts.append({
-            "name": occurrence.component.name,
-            "volume_mm3": body.volume * 1000,
-            "min_mm": [bounds.minPoint.x * 10, bounds.minPoint.y * 10,
-                       bounds.minPoint.z * 10],
-            "max_mm": [bounds.maxPoint.x * 10, bounds.maxPoint.y * 10,
-                       bounds.maxPoint.z * 10],
+            "name": component.name, "volume_mm3": body.volume * 1000,
+            "local_min_mm": [v * 10 for v in bounds.minPoint.asArray()],
+            "local_max_mm": [v * 10 for v in bounds.maxPoint.asArray()],
         })
-    healthy = adsk.fusion.FeatureHealthStates.HealthyFeatureHealthState
-    for item in design.timeline:
-        if item.healthState != healthy:
-            raise ValueError(item.name + ": " + item.errorOrWarningMessage)
-    folder = Path(r"D:\Workspace\github\ttc3018-bot\mechanical\mount-arm\fusion")
-    if not folder.is_dir():
-        raise ValueError("Repository output folder is missing")
-    if document.isModified:
-        if not document.save("PiloMill-L Fusion checkpoint"):
-            raise ValueError("Fusion document save failed")
-    files = {}
-    archive = folder / "PiloMill-L.f3d"
-    options = design.exportManager.createFusionArchiveExportOptions(
-        str(archive))
-    if not design.exportManager.execute(options):
-        raise ValueError("Native archive export failed")
-    step = folder / "PiloMill-L.step"
-    options = design.exportManager.createSTEPExportOptions(str(step))
-    if not design.exportManager.execute(options):
-        raise ValueError("STEP export failed")
-    for path in [archive, step]:
-        files[path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
-    base = root.occurrences.itemByName("StandBase:1").bRepBodies.item(0)
-    pole = root.occurrences.itemByName("StandPole:1").bRepBodies.item(0)
-    rear_offset = abs(base.boundingBox.minPoint.y - pole.boundingBox.minPoint.y)
+        entities.add(occurrence)
+        calculator = body.meshManager.createMeshCalculator()
+        calculator.surfaceTolerance = 0.002
+        calculator.normalTolerance = 0.05
+        mesh = calculator.calculate()
+        meshes.append({"name": component.name,
+                       "vertices": mesh.nodeCoordinatesAsDouble,
+                       "triangles": mesh.nodeIndices})
+    setting = design.createInterferenceInput(entities)
+    setting.areCoincidentFacesIncluded = False
+    interference = design.analyzeInterference(setting)
+    assert interference.count == 0
+    assert document.save("Top-side ribs for flat-print equipment plate")
+    folder = Path(r"D:\Workspace\github\ttc3018-bot"
+                  r"\mechanical\mount-arm\fusion")
+    hashes = {}
+    for name in ["PiloMill-L.f3d", "PiloMill-L.step"]:
+        target = folder / name
+        if target.suffix == ".f3d":
+            options = design.exportManager.createFusionArchiveExportOptions(
+                str(target))
+        else:
+            options = design.exportManager.createSTEPExportOptions(str(target))
+        assert design.exportManager.execute(options)
+        hashes[name] = hashlib.sha256(target.read_bytes()).hexdigest()
     report = {
         "source_of_truth": "Autodesk Fusion", "document": document.name,
-        "document_saved": document.isSaved,
-        "unsaved_changes": document.isModified,
-        "fusion_version": app.version, "units": "mm", "parts": parts,
-        "timeline_healthy": True, "rear_edge_offset_mm": rear_offset * 10,
+        "layout": "sliding-thread-insert-top-ribs-v2", "units": "mm",
+        "document_saved": True, "unsaved_changes": document.isModified,
+        "timeline_healthy": True, "timeline_count": design.timeline.count,
+        "parts": parts, "interference_pairs": 0, "sha256": hashes,
+        "head_plate_size_mm": [130, 105, 4], "stand_height_mm": 220,
+        "top_ribs": {"count": 6, "width_mm": 3, "height_above_plate_mm": 4},
+        "top_ribs_keepouts": "RPi outline, pegs and insertion guide unchanged",
+        "warping_resistance_physically_validated": False,
+        "cool_before_removal": "Let both plate and bed reach room temperature",
+        "front_lip_height_mm": 40, "modeled_thread": "M14x2",
+        "female_thread_geometry": "Exact native BRep copy, scale 1.03 radial",
+        "guide": "Top-open dovetail; insertion from front, closed rear end",
+        "slide_clearance_mm": "0.3-0.35 provisional",
+        "retention": "Integral release clip; release through underside window",
+        "clip_length_mm": 14, "clip_thickness_mm": 1.5,
+        "clip_catch_deflection_mm": 0.3,
+        "metal_fasteners_required": False,
+        "installation_requires_external_fastening": True,
+        "physical_slide_and_clip_fit_validated": False,
+        "physical_thread_fit_validated": False,
+        "clamp_strength_validated": False, "thermal_validated": False,
+        "slicer_validated": False,
+        "prior_slicer_jobs": "Obsolete for the revised equipment plate",
         "parameters": {p.name: p.expression for p in design.userParameters},
-        "sketches": [
-            {"name": sketch.name,
-             "fully_constrained": sketch.isFullyConstrained}
-            for occurrence in root.occurrences
-            for sketch in occurrence.component.sketches
-        ],
-        "physical_fit_validated": False, "stability_validated": False,
-        "thermal_validated": False, "slicer_validated": False,
-        "sha256": files,
     }
     (folder / "validation.json").write_text(
         json.dumps(report, indent=2), encoding="utf-8")
+    staging = Path(r"C:\Users\kamku\OneDrive\Dokumenty\ChatGPT"
+                   r"\Anycubic Kobra X & TwoTrees Skills")
+    (staging / "pilomill-sliding-mesh.json").write_text(json.dumps({
+        "document": document.name,
+        "source_revision": hashes["PiloMill-L.f3d"], "parts": meshes,
+    }), encoding="utf-8")
     app.activeViewport.fit()
+    app.activeViewport.saveAsImageFile(
+        str(staging / "pilomill-sliding-insert.png"), 1400, 900)
     print(json.dumps(report))
 
 # ---------------------------------------------------------------------------

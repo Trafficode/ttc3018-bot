@@ -1,91 +1,92 @@
 # PiloMill-L stand: Fusion-only workflow
 
-## Authoritative design
+## Source and checkpoint
 
-Use the saved **PiloMill-L** document in Fusion's **Default Project**. Edit this
-active document, save it and update the repository checkpoint after each change.
-Do not rebuild or edit this design in FreeCAD.
+Edit the saved **PiloMill-L** document in Autodesk Fusion's **Default Project**.
+Do not edit or regenerate it in FreeCAD. Current revision:
+`sliding-thread-insert-top-ribs-v2`.
 
-Repository files: `mechanical/mount-arm/fusion/`.
+Files under `mechanical/mount-arm/fusion/`:
 
-- `PiloMill-L.f3d`: native Fusion archive, including components and timeline.
+- `PiloMill-L.f3d`: authoritative native checkpoint.
 - `PiloMill-L.step`: solid exchange export, not the editing source.
-- `validation.json`: native geometry checks, parameter values and export hashes.
-- `checkpoint_fusion.py`: trusted Fusion API script for saving the active design
-  and refreshing those exports. Execute through the existing local Fusion MCP
-  (Model Context Protocol) connection or Fusion's Scripts command. It does not
-  modify geometry, install software or operate any connected hardware.
-- `calibration/`: existing snap-fit test samples and their checksums. These are
-  reference exports, not native Fusion components or calibrated hardware fits.
+- `validation.json`: dimensions, clearances, hashes and untested fits.
+- `checkpoint_fusion.py`: validate and refresh the active saved Fusion document.
 
-The checkpoint script currently expects this Windows checkout at
-`D:\Workspace\github\ttc3018-bot`. Update its output path if the checkout moves.
-It refuses unrelated documents and unexpected component structures. New parts
-require updating these checks deliberately. Do not execute scripts from untrusted
-sources; Fusion API scripts run with the user's permissions.
+The checkpoint expects this checkout at `D:\Workspace\github\ttc3018-bot`.
+Preserve unrelated work and inspect the active document before editing.
+The exported archive was reopened and checked for four solid components.
 
-The existing local MCP endpoint can be obtained from Fusion's connection status.
-Inspect the active document first, make scoped native changes, verify geometry and
-timeline health, then save and export. Never substitute a freshly generated model
-for the user's active document or discard unsaved work.
+## Four manufactured parts
 
-## Geometry and controls
+1. **IntegralStand**: unchanged one-piece foot and upright. The foot is
+   148 x 80 x 10 mm; the upright ends 220 mm above the bench. Its upper
+   section is 40 mm wide and 8 mm thick; the reinforced lower root remains
+   wider up to 70 mm. The front lip is 40 mm above the foot.
+   Secure the foot externally to the CNC machine. Free-standing stability
+   is not validated.
+2. **EquipmentHead**: 130 x 105 x 4 mm plate with four Raspberry Pi (RPi)
+   snap pegs and a top-open dovetail guide at the front edge. Print flat,
+   underside on the bed, with the pegs facing up.
+   Six top-side ribs are 3 mm wide and rise 4 mm above the plate. They stay
+   outside the RPi board outline and clear the slide mouth, guide and pegs.
+3. **ThreadInsert**: separate female M14x2 threaded ear, copied from the
+   previous native solid, with a matching sliding tongue. Insert it from
+   the front until the integral clip catches. The guide has a closed rear
+   end. Press the clip through the underside release window to remove it.
+   Print with its broad front face on the bed and threaded hole vertical.
+4. **ClampKnob**: unchanged one-piece knob, 8 mm smooth neck and 16 mm
+   threaded stem. Print knob-face down, stem up. No separate metal fastener.
 
-Four stand components: base, upright, equipment plate and M5 knob. The upright is
-flush with the rear base edge, making an L profile in side view. The base extends
-forward only, underneath the equipment plate. Leave room behind the upright for
-the knob. Base dimensions are 180 x 140 x 10 mm; upright is 50 x 235 x 8 mm.
+The slide has provisional 0.3-0.35 mm clearance. Its 14 mm long, 1.5 mm
+thick clip needs about 0.3 mm deflection. Neither its fit nor retention force
+has been physically tested. Do not force or repeatedly flex the PLA+ clip.
+Check the slide and thread by hand before installing the electronic board.
+Hold the plate while loosening the knob; one knob releases height and tilt.
 
-The closed slot permits 70 mm of vertical adjustment. Pivot height is 147 to
-217 mm above the bench; the saved pose uses 182 mm and 25 degree tilt. One knob
-unlocks height and tilt together. Hold the plate while adjusting. Closed slot ends
-do not protect against completely unscrewing the bolt.
+The original pivot remains local (65, 0, -18) mm. Its height range is
+147-203 mm above the bench; the slot is 14.8 mm wide. The saved pose uses
+182 mm pivot height and 25 degree tilt. Moving parts may exceed 220 mm.
 
-The imported parts remain solid base features; they do not contain the old CAD
-system's sketch history. The L conversion now has native Fusion sketches and
-extrusions for filling the old socket and cutting the rear-edge socket, plus an
-assembly position snapshot. New socket geometry uses named parameters:
-`LBaseThickness`, `LSocketFloor`, `LSocketWidth`, `LSocketDepth`.
+## Electronics and fits
 
-The rear-open socket has a 2 mm floor. Dry-fit and glue its tongue after testing.
-Check withdrawal and bending strength with dummy weights. Use non-slip feet and
-a secured ballast weight; moving the upright does not prove stability.
+RPi board outline: 85 x 56 mm, centred at (65, 52.5) mm. Snap peg centres:
+(46,28), (104,28), (46,77), (104,77) mm. The mounting pattern is offset
+within the outline; install the board in the matching orientation.
+Nominal peg neck: 2.35 mm; barb: 2.90 mm; split: 0.70 mm. Fit is uncalibrated;
+never force the board. See the [official RPi 5 drawing](https://datasheets.raspberrypi.com/rpi5/raspberry-pi-5-mechanical-drawing.pdf).
 
-## Electronics and print assumptions
+The female thread preserves 1.03 radial scaling and the original 2 mm pitch.
+Both threads are modeled, not cosmetic. BRep copies are not associative to
+their historical thread or peg features. Test engagement and holding force.
+Do not overtighten the printed threads.
 
-Raspberry Pi (RPi) 5 uses four prototype split snap pegs without screws. Nominal
-mounting pattern is 58 x 49 mm with 2.7 mm holes. Peg shaft is 2.35 mm, barb
-2.90 mm, tip 2.10 mm and split 0.70 mm. Assumed board thickness is 1.6 mm.
-Print the calibration samples first; measure real holes and never force the PCB
-(printed circuit board) onto tight pegs. PLA+ snaps can crack or creep.
+Camera Rev 1.3 uses hot glue and a 145 mm ribbon. The DHT22 board is
+16 x 41 mm; the planned auxiliary board is 40 x 60 mm. Cable routing,
+camera coverage, heat, vibration and electronics keep-outs need physical checks.
 
-Camera Rev 1.3 mounts underneath with hot glue, clear of lens, connectors and
-conductors. RPi and camera move together; the user's ribbon is only 145 mm.
-The DHT22 module, 16 x 41 mm, glues to the base. The planned 40 x 60 mm LED board
-requires insulating spacers and metal heatsinking for power LEDs. These electronics
-are not detailed native component models in the current archive.
+## Two printing projects
 
-Target material is PLA+ on Anycubic Kobra X. Base and upright print flat; knob
-prints with its nut recess up; plate prints flat with pegs up. Pivot-hole supports
-and peg strength require slicer inspection and coupons. Individual part envelopes
-fit the nominal 260 mm build volume, not necessarily all parts on one plate.
-Cosmetic surfaces are class B; mating and bed-contact surfaces are class C.
+Target: Anycubic Kobra X, 0.4 mm nozzle, Anycubic PLA+, 0.20 mm layers,
+5 walls, 30% infill, 5 top/bottom layers and 5 mm automatic brim.
 
-Use a metal M5 bolt and nut, with broad washers. Nut recess is an uncalibrated
-8.3 mm across flats and 4.5 mm deep. Check hardware length, clamp holding force,
-heat, vibration and cable loads physically. The printed plate is not a heatsink.
+1. `print/01-PiloMill-RPi-zebra-i-pokretlo.3mf`: ribbed plate, insert and
+   knob, approximately 2 h 8 min and 77 g. Filament 2 is grey PLA+.
+   Supports are disabled; the revised dovetail flanks are 45-degree ramps.
+2. `print/02-PiloMill-podstawa-i-stojak.3mf`: unchanged integral stand,
+   approximately 4 h 45 min and 165 g, without supports.
 
-## Validation and removed files
+Paths are relative to `mechanical/mount-arm/`. The first project was checked
+in the slicer preview. Verify physical ACE slot 2 in the manual print-start
+dialog. No job was uploaded or started. The previous upright-plate and
+combined projects are obsolete for the new plate and retained outside Git.
 
-The active Fusion L conversion has four solid components, source-equivalent
-volumes, a flush rear edge and healthy timeline features. The socket sketches
-are constrained. This is not a complete parametric reconstruction of all parts.
-The native archive was reopened in Fusion and verified to contain four solids
-and the timeline; the original saved document was restored as the active model.
-Physical fit, joint strength, clamping force, stability, temperature limits,
-camera coverage, cable routing and slicing remain unvalidated.
+The guide, clip, peg and thread fits, layer strength and slot-roof bridge
+still need a first physical trial. CAD and slicing checks are not production
+approval. Never start printer or CNC work without operator authorization.
 
-Obsolete iterations, native FreeCAD files and FreeCAD generation scripts have
-been moved to an external recoverable backup, not kept as competing repository
-sources. Historical reports and screenshots are not proof of current Fusion
-validation. No machine, printer or Raspberry Pi actions occur in this workflow.
+The previous flat plate bowed after removal while still warm. The ribs are
+an untested stiffness improvement, not proof that warping is eliminated.
+Let the part and bed cool completely to room temperature before removal.
+Avoid bending the part while releasing it. The board, sensor and cable
+clearances still require a trial assembly with the user's actual hardware.

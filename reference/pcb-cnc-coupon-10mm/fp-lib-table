@@ -1,0 +1,4 @@
+(fp_lib_table
+ (version 7)
+ (lib (name "CncCoupon")(type "KiCad")(uri "${KIPRJMOD}/CncCoupon.pretty")(options "")(descr "Machining samples"))
+)
