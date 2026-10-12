@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # server.py
-# 2026-10-02
-# - Private monitoring dashboard and explicit manual CNC operator actions.
+# 2026-10-07
+# - Private dashboard, 180-degree camera view and manual CNC operator actions.
 # ---------------------------------------------------------------------------
 """Serve monitoring and explicit manual CNC controls through Tailscale Serve."""
 
@@ -144,6 +144,7 @@ def camera_worker(state, stop, options):
         "rpicam-vid", "--nopreview", "--timeout", "0",
         "--codec", "mjpeg", "--flush", "--output", "-",
         "--camera", str(options.camera),
+        "--rotation", "180",
         "--width", "960", "--height", "540",
         "--framerate", "8", "--quality", "65",
     ]
@@ -295,15 +296,17 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            if not 1 <= length <= 1024:
+            if not 1 <= length <= 2 * 1024 * 1024:
                 raise ValueError("Invalid request size")
             if self.headers.get("Content-Type") != "application/json":
                 raise ValueError("JSON required")
             payload = json.loads(self.rfile.read(length))
             if not isinstance(payload, dict):
                 raise ValueError("Object required")
-            self.server.cnc.action(payload.get("action"), payload)
-            body = json.dumps({"ok": True}).encode()
+            if payload.get("action") != "job_load" and length > 1024:
+                raise ValueError("Invalid request size")
+            result = self.server.cnc.action(payload.get("action"), payload)
+            body = json.dumps({"ok": True, **(result or {})}).encode()
             self.respond(200, "application/json", body)
         except (ValueError, TypeError) as error:
             body = json.dumps({"error": str(error)}).encode()

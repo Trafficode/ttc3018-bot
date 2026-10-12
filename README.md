@@ -1,4 +1,4 @@
-# TTC3018 Bot
+# Bark Beetle
 
 Rebuildable configuration for a Raspberry Pi CNC monitoring host.
 Current baseline: Raspberry Pi 5, Raspberry Pi Camera Rev 1.3 (OV5647),
@@ -11,8 +11,9 @@ DHT22 on GPIO17 and private Tailscale access.
 - [10 mm PCB starter coupon and CAM files](docs/reference/pcb-cnc-coupon-10mm-cam.md)
 - [40 mm PCB reference coupon](docs/reference/pcb-cnc-coupon-40mm.md)
 
-PiloMill provides camera video, environmental telemetry and explicit manual CNC
+Bark Beetle provides camera video, environmental telemetry and explicit manual CNC
 controls through private Tailscale Serve. The operator connects USB, jogs, sets
 material zero and controls the spindle. There is no automatic USB reconnect,
-homing, probing, unlock or job execution. File streaming is not implemented yet.
+homing, probing or unlock. File jobs support explicitly started linear GRBL
+programs; see [file jobs and limits](docs/development/file-jobs.md).
 See the operations guide for the first supervised test.

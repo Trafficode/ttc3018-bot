@@ -133,6 +133,37 @@ class HttpTests(unittest.TestCase):
             urlopen(self.url + "/camera.jpg", timeout=2)
         self.assertEqual(error.exception.code, 503)
 
+    def test_file_upload_requires_token_and_never_opens_usb(self):
+        content = "(comment)\n" * 200
+        content += "G21G90G94G54\nG0Z5\nG0X0Y0\nM5\nM30\n"
+        body = json.dumps({
+            "action": "job_load", "name": "sample.nc", "content": content,
+        }).encode()
+        request = Request(self.url + "/api/cnc/action", data=body, headers={
+            "Content-Type": "application/json",
+        })
+        with self.assertRaises(HTTPError) as error:
+            urlopen(request, timeout=3)
+        self.assertEqual(error.exception.code, 403)
+        request.add_header("X-PiloMill-Token", self.server.control_token)
+        with urlopen(request, timeout=3) as response:
+            self.assertTrue(json.load(response)["ok"])
+        job = self.server.cnc.status()["job"]
+        self.assertEqual(job["name"], "sample.nc")
+        self.assertEqual(job["state"], "ready")
+        self.assertIsNone(self.server.cnc.port)
+        invalid = Request(self.url + "/api/cnc/action", data=json.dumps({
+            "action": "job_load", "name": "bad.nc", "content": "$H",
+        }).encode(), headers={
+            "Content-Type": "application/json",
+            "X-PiloMill-Token": self.server.control_token,
+        })
+        with self.assertRaises(HTTPError) as error:
+            urlopen(invalid, timeout=3)
+        self.assertEqual(error.exception.code, 400)
+        self.assertEqual(self.server.cnc.status()["job"]["id"], job["id"])
+        self.assertIsNone(self.server.cnc.port)
+
     def test_stream_viewer_limit(self):
         for index in range(4):
             self.assertTrue(self.server.stream_slots.acquire(blocking=False))
