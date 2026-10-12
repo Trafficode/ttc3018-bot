@@ -1,6 +1,4 @@
-* text=auto
-*.sh text eol=lf
-*.py text eol=lf
-*.md text eol=lf
-*.txt text eol=lf
-*.example text eol=lf
+# Preserve exact manufacturing artifact bytes and their recorded SHA256 hashes.
+reference/** -text
+mechanical/mount-arm/fusion/*.step -text
+examples/cam/*.nc -text
