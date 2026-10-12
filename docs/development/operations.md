@@ -24,7 +24,7 @@ the readout, camera and tools stack vertically; the page can scroll without
 cutting off controls. Touch jog buttons are at least 48 pixels across, with Z
 separated from X/Y. Step selection uses 0.1, 1 and 10 mm radio buttons.
 Tab and step changes do not send hardware commands. Disconnected controls
-stay disabled; file execution remains unavailable.
+stay disabled; file upload works without USB and Start requires CNC.
 The manual panel opens USB only through an explicit Connect action. It owns
 one exclusive 115200-baud connection with DTR/RTS low. Opening can still reset
 hardware. This firmware emitted startup banners at about 2.6 and 5 seconds;
@@ -37,7 +37,8 @@ Commands require fresh Idle status and G54 coordinates. Jog cancel is available
 while moving; it is not an emergency stop. No automatic homing, probing, unlock,
 reset or reconnect exists. Unknown work positions remain dashes; cached work
 offsets are discarded after zero changes and connection failures.
-File upload and job execution remain disabled, pending manual bench validation.
+File upload and operator-started execution are implemented; hardware acceptance
+remains pending. See [supported G-code and controls](file-jobs.md).
 
 First supervised test: confirm clear travel and keep the physical power switch
 within reach. Connect, check Idle, select 0.1 mm at 100 mm/min and click X+ once.

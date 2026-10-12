@@ -1,13 +1,14 @@
 # ---------------------------------------------------------------------------
 # cnc.py
-# 2026-10-10
-# - Explicit USB lifecycle, fresh status and bounded manual operator commands.
+# 2026-10-12
+# - Single USB owner, bounded manual commands and explicit file-job actions.
 # ---------------------------------------------------------------------------
 """Manual CNC access; never reconnect, home, unlock or start jobs implicitly."""
 
 import math
 import threading
 import time
+from monitor.jobs import JobRunner, parse_program
 
 SERIAL_PATH = "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
 
@@ -70,6 +71,7 @@ class Controller:
         self.offset = None
         self.error = "Niepodłączona — połącz przy maszynie."
         self.info = []
+        self.jobs = JobRunner()
 
     def _close(self, error):
         if self.port is not None:
@@ -93,26 +95,27 @@ class Controller:
         while time.monotonic() < deadline:
             line = self._read()
             if line.startswith("<"):
-                report = parse_status(line)
-                if "WCO" in report:
-                    self.offset = report["WCO"]
-                position = report.get("WPos")
-                if position is None and "MPos" in report:
-                    if self.offset is not None:
-                        position = []
-                        for index in range(3):
-                            position.append(
-                                report["MPos"][index] - self.offset[index]
-                            )
-                report["position"] = position
-                self.report = report
-                self.report_time = time.monotonic()
+                self._accept_status(line)
                 return
             if starting and line.startswith("Grbl"):
                 continue
             if line.startswith(("Grbl", "ALARM:")):
                 raise RuntimeError("Controller reset or alarm: " + line)
         raise RuntimeError("No current controller status; reconnect manually")
+
+    def _accept_status(self, line):
+        """Update cached coordinates from either polling or the job reader."""
+        report = parse_status(line)
+        if "WCO" in report:
+            self.offset = report["WCO"]
+        position = report.get("WPos")
+        if position is None and "MPos" in report and self.offset is not None:
+            position = []
+            for index in range(3):
+                position.append(report["MPos"][index] - self.offset[index])
+        report["position"] = position
+        self.report = report
+        self.report_time = time.monotonic()
 
     def _line(self, command):
         self.port.write((command + "\n").encode("ascii"))
@@ -186,6 +189,7 @@ class Controller:
                 "reason": self.error,
                 "age_seconds": age,
                 "info": self.info,
+                "job": self.jobs.status(),
             }
 
     def disconnect(self):
@@ -215,6 +219,51 @@ class Controller:
 
     def action(self, action, payload):
         """Perform one manual command; failures close and never retry USB."""
+        if action in ("job_pause", "job_resume", "job_stop"):
+            if action == "job_resume" and payload.get("confirmed") is not True:
+                raise ValueError("Wymagane potwierdzenie wznowienia.")
+            return self.jobs.control(action[4:], payload.get("job_id"))
+        if action == "job_heartbeat":
+            return self.jobs.heartbeat(payload.get("lease"))
+        if action == "job_clear":
+            return self.jobs.clear()
+        if action == "job_load":
+            program = parse_program(payload.get("name"), payload.get("content"))
+            with self.lock:
+                self.jobs.load(program)
+            return
+        if action == "job_start":
+            with self.lock:
+                if self.jobs.active() or self.port is None:
+                    raise ValueError("Połącz CNC; zakończ poprzednie zadanie.")
+                if payload.get("confirmed") is not True:
+                    raise ValueError("Wymagane potwierdzenie operatora.")
+                self._status()
+                if self.report["state"] != "Idle":
+                    raise ValueError("Start wymaga stanu Idle.")
+                if self.report["position"] is None:
+                    raise ValueError(
+                        "Brak współrzędnych roboczych; ustaw zero."
+                    )
+                modal = self._line("$G")
+                tokens = []
+                for line in modal:
+                    if line.startswith("[GC:") and line.endswith("]"):
+                        tokens = line[4:-1].split()
+                if "G54" not in tokens or "M5" not in tokens:
+                    raise ValueError(
+                        "Start wymaga G54 i wyłączonego wrzeciona."
+                    )
+                return self.jobs.start(payload.get("job_id"))
+        with self.lock:
+            if self.jobs.active():
+                raise ValueError(
+                    "Zadanie aktywne — użyj Pauzy lub Stop zadania."
+                )
+            return self._manual_action(action, payload)
+
+    def _manual_action(self, action, payload):
+        """Keep existing manual operations isolated from the job sender."""
         if action == "connect":
             return self.connect()
         if action == "disconnect":
@@ -254,14 +303,22 @@ class Controller:
 
     def worker(self, stop):
         """Poll connected USB only; no automatic connection or recovery."""
-        while not stop.wait(0.5):
+        last_poll = 0
+        while not stop.wait(0.02):
             with self.lock:
-                if self.port is not None:
+                if self.jobs.active():
+                    self.jobs.tick(self)
+                elif self.port is not None and (
+                    time.monotonic() - last_poll >= 0.5
+                ):
+                    last_poll = time.monotonic()
                     try:
                         self._status()
                     except Exception as error:
                         self._close(str(error))
         with self.lock:
+            if self.jobs.active():
+                self.jobs.abort(self, "Usługa zatrzymana podczas zadania.")
             self._close("Service stopped")
 
 # ---------------------------------------------------------------------------

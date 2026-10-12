@@ -12,5 +12,6 @@ DHT22 on GPIO17 and private Tailscale access.
 Bark Beetle provides camera video, environmental telemetry and explicit manual CNC
 controls through private Tailscale Serve. The operator connects USB, jogs, sets
 material zero and controls the spindle. There is no automatic USB reconnect,
-homing, probing, unlock or job execution. File streaming is not implemented yet.
+homing, probing or unlock. File jobs support explicitly started linear GRBL
+programs; see [file jobs and limits](docs/development/file-jobs.md).
 See the operations guide for the first supervised test.

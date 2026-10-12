@@ -1,7 +1,7 @@
 # System boundaries
 
 The repository owns host setup and monitoring. The operator owns physical work.
-Solid arrows below represent implemented access. File streaming is pending.
+Solid arrows below represent implemented access, including operator file jobs.
 
 ```mermaid
 flowchart LR
@@ -41,7 +41,11 @@ POST `/api/cnc/action` with a per-process cross-site request protection token.
 USB opens only after explicit connection, never at service startup. One lock
 serializes all controller I/O. Status is cached; stale positions are unavailable.
 
-Pending: file sender and dedicated read-only CNC agent integration.
+The file sender shares the existing USB owner and uses send-response streaming.
+It validates the complete linear-G-code file before upload becomes ready and
+requires explicit operator Start/Resume. No file runs on upload or startup.
+See [file jobs](../development/file-jobs.md) for limits, lease expiry and abort.
+Pending: dedicated read-only CNC agent integration.
 A service restart closes USB but does not promise to stop the spindle. Restart
 only with the machine idle and spindle physically confirmed off.
 

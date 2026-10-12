@@ -76,6 +76,11 @@ input,select { min-height:44px; width:100%; padding:8px; margin-top:6px; }
 .notice { font-size:13px; color:#555861; background:#e5e4df; padding:10px 12px; margin-top:16px; border-left:3px solid #b86e00; overflow-wrap:anywhere; }
 .button-row { display:flex; gap:12px; margin-top:16px; }
 .button-row button { flex:1; }
+.job-bounds { font:13px ui-monospace,monospace; background:#e5e4df; padding:10px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.job-bounds:empty { display:none; }
+#job-progress { width:100%; height:16px; margin-top:12px; accent-color:var(--accent); }
+#job-status { overflow-wrap:anywhere; }
+#job-file { font-size:12px; }
 .operator-footer { font-size:11px; color:var(--muted); margin-top:12px; }
 .safety-note { border-top:1px solid var(--border); padding-top:12px; font-size:12px; color:#775010; }
 .warning,#sensor-status.warning,#camera-status.warning { color:#875200; }

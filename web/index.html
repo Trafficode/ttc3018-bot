@@ -36,7 +36,7 @@
         <div class="tabs" role="tablist" aria-label="Narzędzia operatora">
           <button id="tab-move" role="tab" aria-selected="true" aria-controls="tool-move" type="button">1. Ruch</button>
           <button id="tab-zero" role="tab" aria-selected="false" aria-controls="tool-zero" tabindex="-1" type="button">2. Zero</button>
-          <button id="tab-file" role="tab" aria-selected="false" aria-controls="tool-file" tabindex="-1" type="button">3. Plik<small>Niedostępny</small></button>
+          <button id="tab-file" role="tab" aria-selected="false" aria-controls="tool-file" tabindex="-1" type="button">3. Plik</button>
           <button id="tab-spindle" role="tab" aria-selected="false" aria-controls="tool-spindle" tabindex="-1" type="button">4. Wrzeciono</button>
         </div>
         <div class="tools">
@@ -74,11 +74,19 @@
           </section>
           <section id="tool-file" role="tabpanel" aria-labelledby="tab-file" tabindex="0" hidden>
             <h3>Plik do frezowania</h3>
-            <fieldset disabled><legend class="sr-only">Plik i zadanie — niedostępne</legend>
-              <label>Plik G-code<input type="file" accept=".nc,.gcode,.tap"></label>
-              <div class="button-row job-actions"><button type="button">Start</button><button type="button">Pauza</button><button class="stop" type="button">Stop zadania</button></div>
-            </fieldset>
-            <p class="hint">Wgrywanie i wykonywanie ścieżek nie są jeszcze dostępne.</p>
+            <label>Plik G-code · do 1 MiB<input id="job-file" type="file" accept=".nc,.gcode,.tap,.ngc" disabled></label>
+            <p id="job-summary" class="hint">Wybierz plik. Wgranie nie uruchamia maszyny.</p>
+            <button id="job-clear" type="button" disabled>Usuń plik</button>
+            <pre id="job-bounds" class="job-bounds" aria-label="Zakres programu"></pre>
+            <progress id="job-progress" max="1" value="0" aria-label="Polecenia przyjęte przez sterownik"></progress>
+            <p id="job-status" class="hint" role="status">Brak zadania.</p>
+            <div class="button-row job-actions">
+              <button id="job-start" type="button" disabled>Start</button>
+              <button id="job-pause" type="button" disabled>Pauza</button>
+              <button id="job-stop" class="stop" type="button" disabled>Stop zadania</button>
+            </div>
+            <p class="hint">G21 · G90 · G94 · G54 · ruchy G0/G1. Łuki, M6 i probing nie są obsługiwane. S to skala 0–1000, nie RPM.</p>
+            <p class="hint">Pauza nie wyłącza wrzeciona. Utrata kontaktu z przeglądarką prowadzącą zadanie powoduje pauzę po 8 s. Stop przerywa resetem sterownika — sprawdź wrzeciono i ustaw zero ponownie.</p>
           </section>
           <section id="tool-spindle" role="tabpanel" aria-labelledby="tab-spindle" tabindex="0" hidden>
             <h3>Wrzeciono</h3><p class="hint">Moc to skala sterownika, nie odczyt obrotów.</p>
