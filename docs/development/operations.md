@@ -115,3 +115,22 @@ To disable autostart use `systemctl --user disable --now ttc-monitor`.
 To remove only this private Serve route use
 `sudo tailscale serve --http=8765 off`; do not use `serve reset` on a shared host.
 Linger may also support other user services; do not disable it indiscriminately.
+
+## Operator dialogs and messages
+
+Connection, disconnection, Start, Resume, material-zero changes and spindle start
+use an in-panel confirmation dialog. Initial focus is Cancel; Escape cancels.
+No command is sent before confirmation. After confirmation the panel fetches
+current status again and rejects changes to the job, readiness or reported
+position rather than sending an outdated action. The backend checks still apply.
+
+Pause, Stop, jog cancellation and spindle off do not require a dialog. Resume
+confirmation includes an immediate Stop button while a job is active. Brief
+success messages report accepted or requested actions, not physical verification.
+Command errors remain in a visible banner until acknowledged. CNC alarm, job
+failure, stale CNC reports and lost panel contact remain visible while the
+underlying condition persists. Acknowledging a command message sends no command.
+
+Frontend-only updates do not require restarting the service. Leave an active
+operator tab running during deployment; refresh after the job ends. Reloading
+the owner tab during a job loses its in-memory heartbeat lease and can pause it.

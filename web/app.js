@@ -12,6 +12,7 @@ let cncConnected = false;
 let cncIdle = false;
 let cncFresh = false;
 let cncKnown = false;
+let cncPosition = null;
 let pendingAction = null;
 let actionPending = false;
 let actionMessage = '';
@@ -25,6 +26,82 @@ const jobFile = document.getElementById('job-file');
 const jobStart = document.getElementById('job-start');
 const jobPause = document.getElementById('job-pause');
 const jobStop = document.getElementById('job-stop');
+const actionDialog = document.getElementById('action-dialog');
+const dialogCancel = document.getElementById('dialog-cancel');
+const dialogConfirm = document.getElementById('dialog-confirm');
+const dialogStop = document.getElementById('dialog-stop');
+const notification = document.getElementById('notification');
+let confirmation = null;
+let notificationTimer = null;
+let intentionalDisconnect = false;
+const operatorErrors = {action: '', connection: '', machine: '', server: ''};
+
+function renderErrors() {
+  const messages = [...new Set(Object.values(operatorErrors).filter(Boolean))];
+  document.getElementById('operator-alert').hidden = messages.length === 0;
+  document.getElementById('operator-alert-message').textContent = messages.join('\n');
+  document.getElementById('dismiss-action-error').hidden = !operatorErrors.action;
+}
+
+document.getElementById('dismiss-action-error').addEventListener('click', () => {
+  operatorErrors.action = '';
+  renderErrors();
+});
+
+function notify(message) {
+  clearTimeout(notificationTimer);
+  notification.textContent = message;
+  notification.hidden = false;
+  notificationTimer = setTimeout(() => { notification.hidden = true; }, 6000);
+}
+
+function askConfirmation(title, description, label) {
+  if (confirmation || actionPending || !controlToken || !cncKnown) return Promise.resolve(false);
+  document.getElementById('dialog-title').textContent = title;
+  document.getElementById('dialog-description').textContent = description;
+  dialogConfirm.textContent = label;
+  dialogStop.hidden = !activeJobStates.includes(job.state);
+  actionDialog.returnValue = '';
+  return new Promise(resolve => {
+    confirmation = resolve;
+    actionDialog.showModal();
+    dialogCancel.focus();
+  });
+}
+
+actionDialog.addEventListener('close', () => {
+  const resolve = confirmation;
+  confirmation = null;
+  if (resolve) resolve(actionDialog.returnValue === 'confirmed');
+});
+actionDialog.addEventListener('cancel', event => {
+  event.preventDefault();
+  actionDialog.close('cancelled');
+});
+dialogCancel.addEventListener('click', () => actionDialog.close('cancelled'));
+dialogConfirm.addEventListener('click', () => actionDialog.close('confirmed'));
+dialogStop.addEventListener('click', () => {
+  actionDialog.close('cancelled');
+  return sendAction({action: 'job_stop'});
+});
+
+async function confirmedAction(payload, title, description, label, stillValid) {
+  const positionBefore = cncConnected ? JSON.stringify(cncPosition) : null;
+  if (!await askConfirmation(title, description, label)) return;
+  // A second viewer or a failed poll can change the state while the dialog is open.
+  await refresh();
+  if (!controlToken || !cncKnown || actionPending || !stillValid()
+      || (positionBefore !== null && JSON.stringify(cncPosition) !== positionBefore)) {
+    operatorErrors.action = 'Stan CNC lub zadania zmienił się. Polecenie nie zostało wysłane. Sprawdź aktualny stan.';
+    renderErrors();
+    return;
+  }
+  await sendAction(payload);
+}
+
+function manualReady() {
+  return cncConnected && cncFresh && cncIdle && !activeJobStates.includes(job.state);
+}
 
 function updateControls() {
   const jobActive = activeJobStates.includes(job.state);
@@ -70,12 +147,27 @@ async function sendAction(payload) {
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Błąd sterownika');
     if (result.lease) jobLease = result.lease;
+    intentionalDisconnect = ['disconnect', 'job_stop'].includes(payload.action);
     actionMessage = payload.action === 'connect' ? 'CNC połączone.'
       : payload.action === 'disconnect' ? 'CNC rozłączone przez operatora.'
       : payload.action === 'job_load' ? 'Plik sprawdzony. Start wymaga Twojego potwierdzenia.'
       : 'Sterownik przyjął polecenie. Sprawdź maszynę i pozycję.';
+    const messages = {
+      connect: 'CNC połączone.', disconnect: 'CNC rozłączone.',
+      zero_xy: 'Zero X/Y ustawione.', zero_z: 'Zero Z ustawione.',
+      job_load: 'Plik sprawdzony. Możesz przygotować Start.',
+      job_clear: 'Plik usunięty.', job_start: 'Uruchomienie programu zlecone.',
+      job_pause: 'Pauza zlecona. Wrzeciono może nadal pracować.',
+      job_resume: 'Wznowienie programu zlecone.',
+      job_stop: 'Przerwanie zlecone. Sprawdź wrzeciono i ponownie ustaw zero.',
+      spindle_on: 'Polecenie włączenia wrzeciona przyjęte.',
+      spindle_off: 'Polecenie wyłączenia wrzeciona przyjęte.',
+    };
+    if (messages[payload.action]) notify(messages[payload.action]);
   } catch (error) {
     actionMessage = `Błąd: ${error.message}. Nie ponawiaj w ciemno — sprawdź maszynę.`;
+    operatorErrors.action = actionMessage;
+    renderErrors();
   } finally {
     actionPending = false;
     pendingAction = null;
@@ -89,6 +181,8 @@ jobFile.addEventListener('change', async () => {
   if (!file) return;
   if (file.size > 1024 * 1024) {
     document.getElementById('job-summary').textContent = 'Limit pliku: 1 MiB.';
+    operatorErrors.action = 'Nie wczytano pliku. Maksymalny rozmiar to 1 MiB.';
+    renderErrors();
     jobFile.value = '';
     return;
   }
@@ -96,21 +190,29 @@ jobFile.addEventListener('change', async () => {
     await sendAction({action: 'job_load', name: file.name, content: await file.text()});
   } catch (error) {
     document.getElementById('job-summary').textContent = `Nie odczytano pliku: ${error.message}`;
+    operatorErrors.action = `Nie odczytano pliku: ${error.message}`;
+    renderErrors();
   } finally { jobFile.value = ''; }
 });
 jobStart.addEventListener('click', () => {
-  if (confirm(`Uruchomić ${job.name}? Sprawdź narzędzie, zakres programu, mocowania, zero X/Y i Z oraz bezpieczną wysokość. Pozostań przy frezarce z dostępem do wyłącznika.`)) {
-    sendAction({action: 'job_start', job_id: job.id, confirmed: true});
-  }
+  if (jobStart.disabled) return;
+  const id = job.id;
+  return confirmedAction({action: 'job_start', job_id: id, confirmed: true},
+    'Uruchomić program?', `${job.name}\n\nSprawdź narzędzie, zakres programu, mocowania, zero X/Y i Z oraz wysokość przejazdów. Program może włączyć wrzeciono. Pozostań przy maszynie z dostępem do wyłącznika.`,
+    'Uruchom program', () => manualReady() && job.id === id);
 });
 document.getElementById('job-clear').addEventListener('click', () => sendAction({action: 'job_clear'}));
 jobPause.addEventListener('click', () => {
+  if (jobPause.disabled) return;
   const resume = job.state === 'paused';
-  if (resume && !confirm('Wznowić ruch i wykonywanie programu? Sprawdź maszynę, narzędzie i wrzeciono.')) return;
-  sendAction({action: resume ? 'job_resume' : 'job_pause', job_id: job.id, confirmed: resume});
+  const id = job.id;
+  if (resume) return confirmedAction({action: 'job_resume', job_id: id, confirmed: true},
+    'Wznowić program?', 'Wznowienie uruchomi ruch narzędzia. Sprawdź maszynę, narzędzie oraz wrzeciono i usuń przedmioty ze strefy pracy.',
+    'Wznów program', () => cncConnected && cncFresh && job.state === 'paused' && job.id === id);
+  return sendAction({action: 'job_pause', job_id: id});
 });
 jobStop.addEventListener('click', () => {
-  sendAction({action: 'job_stop'});
+  return sendAction({action: 'job_stop'});
 });
 async function jobHeartbeat() {
   if (jobLease && activeJobStates.includes(job.state)) {
@@ -128,16 +230,15 @@ async function jobHeartbeat() {
 jobHeartbeat();
 
 connectButton.addEventListener('click', () => {
-  if (!cncKnown || actionPending) return;
+  if (connectButton.disabled || !cncKnown || actionPending) return;
   if (cncConnected) {
-    if (confirm('Rozłączyć CNC? Frezarka musi być bezczynna, a wrzeciono fizycznie wyłączone. Rozłączenie USB nie zatrzymuje wrzeciona.')) {
-      sendAction({action: 'disconnect'});
-    }
-    return;
+    return confirmedAction({action: 'disconnect'}, 'Rozłączyć CNC?',
+      'Frezarka musi być bezczynna, a wrzeciono wyłączone. Rozłączenie USB samo nie zatrzymuje wrzeciona.',
+      'Rozłącz CNC', manualReady);
   }
-  if (confirm('Czy frezarka stoi, wrzeciono jest wyłączone i jesteś przy maszynie? Otwarcie USB może zresetować sterownik.')) {
-    sendAction({action: 'connect'});
-  }
+  return confirmedAction({action: 'connect'}, 'Połączyć ze sterownikiem?',
+    'Upewnij się, że frezarka stoi, wrzeciono jest wyłączone i jesteś przy stanowisku. Otwarcie połączenia USB może zresetować sterownik.',
+    'Połącz CNC', () => !cncConnected && !activeJobStates.includes(job.state));
 });
 for (const button of document.querySelectorAll('[data-axis]')) {
   button.addEventListener('click', () => sendAction({
@@ -149,9 +250,16 @@ for (const button of document.querySelectorAll('[data-axis]')) {
 for (const button of document.querySelectorAll('[data-action]')) {
   button.addEventListener('click', () => {
     const action = button.dataset.action;
-    if (action.startsWith('zero_') && !confirm('Czy narzędzie jest w wybranym punkcie zera materiału? Ta akcja zmienia zero, ale nie przesuwa osi.')) return;
-    if (action === 'spindle_on' && !confirm('Uruchomić wrzeciono? Usuń ręce i luźne przedmioty ze strefy pracy.')) return;
-    sendAction({action, power: Number(document.getElementById('spindle-power').value)});
+    if (button.disabled) return;
+    const payload = {action, power: Number(document.getElementById('spindle-power').value)};
+    if (action.startsWith('zero_')) return confirmedAction(payload,
+      action === 'zero_z' ? 'Ustawić zero Z?' : 'Ustawić zero X/Y?',
+      'Aktualne położenie narzędzia zostanie zapisane jako zero materiału. Polecenie nie przesuwa osi. Dla Z uwzględnij grubość papieru, jeśli był używany.',
+      'Ustaw zero', manualReady);
+    if (action === 'spindle_on') return confirmedAction(payload, 'Włączyć wrzeciono?',
+      `Moc sterownika: ${payload.power} / 1000. Usuń ręce i luźne przedmioty ze strefy pracy.`,
+      'Włącz wrzeciono', manualReady);
+    return sendAction(payload);
   });
 }
 
@@ -199,13 +307,27 @@ async function refresh() {
     });
     if (!response.ok) throw new Error('Brak odpowiedzi serwera');
     const status = await response.json();
+    operatorErrors.server = '';
     controlToken = status.control_token;
     const wasConnected = cncConnected;
+    const previousJobState = job.state;
     cncConnected = status.cnc.connected;
+    cncPosition = status.cnc.position || null;
     cncFresh = status.cnc.fresh === true;
     cncKnown = true;
     cncIdle = cncFresh && status.cnc.state === 'Idle';
     job = status.cnc.job || {state: 'empty'};
+    if (job.state === 'completed' && activeJobStates.includes(previousJobState)) notify('Program zakończony. Sterownik zgłasza bezczynność.');
+    operatorErrors.connection = cncConnected && !cncFresh
+      ? 'Brak aktualnego odczytu CNC. Sterowanie jest zablokowane; sprawdź maszynę.'
+      : wasConnected && !cncConnected && !intentionalDisconnect
+        ? 'Utracono połączenie ze sterownikiem CNC. Sprawdź maszynę i wrzeciono.'
+        : !cncConnected ? operatorErrors.connection : '';
+    if (intentionalDisconnect && !cncConnected) operatorErrors.connection = '';
+    intentionalDisconnect = false;
+    operatorErrors.machine = job.error || (status.cnc.state === 'Alarm' ? 'Sterownik CNC zgłasza alarm. Sprawdź maszynę.' : '');
+    renderErrors();
+    if (actionDialog.open) dialogStop.hidden = !activeJobStates.includes(job.state);
     const jobNames = {empty: 'Brak zadania', ready: 'Gotowy', running: 'Wykonywanie', draining: 'Oczekiwanie na zakończenie ruchu', pausing: 'Zatrzymywanie posuwu', paused: 'Pauza — wrzeciono może pracować', resuming: 'Wznawianie', completed: 'Zakończono', stopped: 'Przerwano', failed: 'Błąd — sprawdź maszynę'};
     document.getElementById('job-summary').textContent = job.name
       ? `${job.name} · ${job.total} poleceń · F ≤ ${job.max_feed} mm/min · S ≤ ${job.max_power}`
@@ -254,10 +376,13 @@ async function refresh() {
       stopStream();
     }
   } catch (error) {
+    operatorErrors.server = 'Brak odpowiedzi panelu. Stan CNC jest nieznany — sprawdź maszynę. Nie ponawiaj poleceń w ciemno.';
+    renderErrors();
     controlToken = null;
     cncKnown = false;
     cncFresh = false;
     cncIdle = false;
+    cncPosition = null;
     updateControls();
     cncBadge.textContent = 'CNC: stan nieznany';
     cncBadge.className = 'badge warning';

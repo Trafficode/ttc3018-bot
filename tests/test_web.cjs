@@ -10,6 +10,9 @@ function element(id) {
     textContent: '', disabled: false, className: '', listeners: {},
     addEventListener(event, callback) { this.listeners[event] = callback; },
     removeAttribute() {},
+    focus() {},
+    showModal() { this.open = true; },
+    close(value) { this.open = false; this.returnValue = value; this.listeners.close?.(); },
   });
   return elements.get(id);
 }
@@ -22,6 +25,7 @@ let status = {
 let offline = false;
 let releaseAction;
 let heldAction = false;
+let rejectedAction = false;
 const actions = [];
 const context = vm.createContext({
   document: {
@@ -31,16 +35,17 @@ const context = vm.createContext({
   },
   AbortSignal, Date, Number, Array, Error,
   setTimeout() {}, // Do not run background polling in this test.
-  confirm: () => true,
+  clearTimeout() {},
+  confirm: () => { throw new Error('Native confirmation must never be used'); },
   fetch: async (url, options = {}) => {
     if (offline) throw new Error('offline');
     if (options.method === 'POST') {
       const action = JSON.parse(options.body).action;
       actions.push(action);
       if (heldAction) await new Promise(resolve => { releaseAction = resolve; });
-      status.cnc = action === 'connect'
-        ? {connected: true, fresh: true, state: 'Idle', position: [1, 2, 3]}
-        : {connected: false, fresh: false, state: null, position: null};
+      if (rejectedAction) return {ok: false, json: async () => ({error: 'Test controller error'})};
+      if (action === 'connect') status.cnc = {connected: true, fresh: true, state: 'Idle', position: [1, 2, 3]};
+      if (action === 'disconnect') status.cnc = {connected: false, fresh: false, state: null, position: null};
       return {ok: true, json: async () => ({ok: true})};
     }
     return {ok: true, json: async () => status};
@@ -115,5 +120,69 @@ const run = code => vm.runInContext(code, context);
   assert.equal(element('job-pause').disabled, true);
   assert.equal(element('job-stop').disabled, true);
   assert.match(element('job-status').textContent, /nieznany/);
-  console.log('Connection and job ready/running/paused/offline UI states passed.');
+  assert.equal(element('operator-alert').hidden, false);
+  assert.match(element('operator-alert-message').textContent, /Brak odpowiedzi/);
+
+  // Dialog cancellation never sends an action, and stale confirmation cannot start.
+  heldAction = false;
+  offline = false;
+  status.cnc = {connected: true, fresh: true, state: 'Idle', position: [1, 2, 3],
+    job: {id: 'job-a', state: 'ready', name: '<unsafe>.nc', total: 9}};
+  await run('refresh()');
+  const before = actions.length;
+  const cancelled = element('job-start').listeners.click();
+  assert.equal(element('action-dialog').open, true);
+  assert.match(element('dialog-description').textContent, /<unsafe>\.nc/);
+  assert.equal(actions.length, before);
+  element('dialog-cancel').listeners.click();
+  await cancelled;
+  assert.equal(actions.length, before);
+  const escaped = element('job-start').listeners.click();
+  element('action-dialog').listeners.cancel({preventDefault() {}});
+  await escaped;
+  assert.equal(actions.length, before);
+  const stale = element('job-start').listeners.click();
+  status.cnc.job.id = 'job-b';
+  element('dialog-confirm').listeners.click();
+  await stale;
+  assert.equal(actions.length, before);
+  assert.match(element('operator-alert-message').textContent, /zmienił się/);
+  const moved = element('job-start').listeners.click();
+  status.cnc.position = [4, 2, 3];
+  element('dialog-confirm').listeners.click();
+  await moved;
+  assert.equal(actions.length, before);
+  const started = element('job-start').listeners.click();
+  element('dialog-confirm').listeners.click();
+  await started;
+  assert.equal(actions.at(-1), 'job_start');
+
+  // Pausing and stopping do not open a dialog; a resume dialog exposes Stop.
+  status.cnc.job.state = 'running';
+  await run('refresh()');
+  await element('job-pause').listeners.click();
+  assert.equal(actions.at(-1), 'job_pause');
+  assert.equal(element('action-dialog').open, false);
+  status.cnc.job.state = 'paused';
+  await run('refresh()');
+  const resuming = element('job-pause').listeners.click();
+  assert.equal(element('dialog-stop').hidden, false);
+  element('dialog-stop').listeners.click();
+  await resuming;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(actions.at(-1), 'job_stop');
+  assert.equal(actions.includes('job_resume'), false);
+  await element('job-stop').listeners.click();
+  assert.equal(actions.at(-1), 'job_stop');
+  assert.equal(element('action-dialog').open, false);
+
+  // Action errors survive successful status polling and require acknowledgement.
+  rejectedAction = true;
+  await run('sendAction({action: "job_pause"})');
+  rejectedAction = false;
+  await run('refresh()');
+  assert.match(element('operator-alert-message').textContent, /Test controller error/);
+  element('dismiss-action-error').listeners.click();
+  assert.doesNotMatch(element('operator-alert-message').textContent, /Test controller error/);
+  console.log('Connection/job states, dialog cancellation/staleness, immediate Stop/Pause and persistent errors passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

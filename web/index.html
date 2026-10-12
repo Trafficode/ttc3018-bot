@@ -21,6 +21,10 @@
       <p id="sensor-status" role="status">Oczekiwanie na czujnik…</p>
       <button id="connect-cnc" type="button" disabled>Stan CNC nieznany</button>
     </header>
+    <section id="operator-alert" class="operator-alert" role="alert" hidden>
+      <div><strong>Sprawdź stan stanowiska</strong><p id="operator-alert-message"></p></div>
+      <button id="dismiss-action-error" type="button" aria-label="Zamknij komunikat o poleceniu" hidden>Rozumiem</button>
+    </section>
     <section class="readout" aria-label="Pozycje względem materiału">
       <p>Pozycja (G54)</p>
       <div class="axes">
@@ -107,5 +111,13 @@
     </div>
     <p class="safety-note">Pozostań przy maszynie. Podgląd i przerwanie ruchu nie zastępują wyłącznika awaryjnego.</p>
   </main>
+  <div id="notification" class="notification" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+  <dialog id="action-dialog" class="action-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-description">
+    <div class="dialog-heading"><span class="dialog-mark" aria-hidden="true">!</span><div><p class="dialog-eyebrow">Potwierdzenie operatora</p><h2 id="dialog-title"></h2></div></div>
+    <p id="dialog-description" class="dialog-description"></p>
+    <p class="dialog-note">Polecenie zostanie wysłane dopiero po potwierdzeniu.</p>
+    <div class="dialog-actions"><button id="dialog-cancel" type="button" autofocus>Anuluj</button><button id="dialog-confirm" class="primary" type="button">Potwierdź</button></div>
+    <button id="dialog-stop" class="stop" type="button" hidden>Przerwij program teraz</button>
+  </dialog>
 </body>
 </html>
