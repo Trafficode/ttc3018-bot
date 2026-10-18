@@ -64,8 +64,10 @@ class ZProbe:
             if line.startswith("$") and "=" in line:
                 key, value = line.split("=", 1)
                 settings[key] = float(value)
-        if settings.get("$6") != 0 or settings.get("$13") != 0:
-            raise ValueError("Wymagane $6=0 i raportowanie mm ($13=0).")
+        # This DLC32 installation reports contact with the opposite polarity.
+        # Keep display and G38.2 semantics aligned in firmware, not in the UI.
+        if settings.get("$6") != 1 or settings.get("$13") != 0:
+            raise ValueError("Ta frezarka wymaga $6=1 i $13=0.")
         position = report.get("position")
         machine = report.get("MPos")
         expected = payload.get("position")

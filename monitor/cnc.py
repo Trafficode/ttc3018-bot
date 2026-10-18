@@ -190,6 +190,13 @@ class Controller:
                 age = time.monotonic() - self.report_time
             connected = self.port is not None
             fresh = connected and age is not None and age < 2
+            inverted = None
+            if connected:
+                for line in self.info:
+                    if line == "$6=0":
+                        inverted = False
+                    elif line == "$6=1":
+                        inverted = True
             return {
                 "connected": connected,
                 "fresh": fresh,
@@ -203,6 +210,7 @@ class Controller:
                     self.report["probe_triggered"] if fresh else None
                 ),
                 "probe_tested": self.probe_tested,
+                "probe_inverted": inverted,
                 "z_probe": self.probe.status(),
             }
 
@@ -246,7 +254,50 @@ class Controller:
                 except RuntimeError as error:
                     self._close(str(error))
                     raise
+            if action == "probe_polarity":
+                return self._probe_polarity(payload)
             return self._action(action, payload)
+
+    def _probe_polarity(self, payload):
+        """Change only $6 after explicit confirmation; never invert UI alone."""
+        if payload.get("confirmed") is not True or (
+            not isinstance(payload.get("inverted"), bool)
+            or not isinstance(payload.get("before"), bool)
+        ):
+            raise ValueError("Wymagane potwierdzenie zmiany polaryzacji.")
+        if self.port is None or self.jobs.active():
+            raise ValueError("Połącz CNC i zakończ aktywny program.")
+        try:
+            self._status()
+            if self.report["state"] != "Idle":
+                raise ValueError("Zmiana polaryzacji wymaga Idle.")
+            modal = self._line("$G")
+            spindle_off = any(
+                line.startswith("[GC:") and line.endswith("]")
+                and "M5" in line[4:-1].split() for line in modal
+            )
+            if not spindle_off:
+                raise ValueError("Wyłącz wrzeciono przed zmianą polaryzacji.")
+            settings = self._line("$$")
+            before = f"$6={int(payload['before'])}"
+            if before not in settings:
+                raise ValueError("Polaryzacja zmieniła się; odśwież panel.")
+            command = f"$6={int(payload['inverted'])}"
+            self._line(command)
+            settings = self._line("$$")
+            if command not in settings:
+                raise RuntimeError("Nie potwierdzono zapisu polaryzacji.")
+            self.info = [line for line in self.info if not line.startswith("$")]
+            self.info.extend(settings)
+            self._status()
+        except ValueError:
+            raise
+        except Exception as error:
+            self._close(str(error))
+            raise RuntimeError(str(error)) from error
+        finally:
+            # A polarity change invalidates every previous contact test.
+            self.probe_tested = False
 
     def _action(self, action, payload):
         """Perform one manual command; failures close and never retry USB."""

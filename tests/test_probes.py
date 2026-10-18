@@ -43,7 +43,7 @@ class ProbeTests(unittest.TestCase):
         self.cnc = Controller()
         self.port = Port()
         self.cnc.port = self.port
-        self.cnc.info = ["$6=0", "$13=0"]
+        self.cnc.info = ["$6=1", "$13=0"]
         self.cnc._accept_status("<Idle|MPos:0,0,6|WCO:0,0,5|Pn:P>")
         self.cnc._accept_status("<Idle|MPos:0,0,6|WCO:0,0,5>")
         self.payload = {"confirmed": True, "distance": 1, "feed": 20,
@@ -107,7 +107,7 @@ class ProbeTests(unittest.TestCase):
             self.modal = [modal]
             with self.assertRaises(ValueError):
                 self.start()
-        for settings in (["$6=1", "$13=0"], ["$6=0", "$13=1"], []):
+        for settings in (["$6=0", "$13=0"], ["$6=1", "$13=1"], []):
             self.cnc.info = settings
             with self.assertRaises(ValueError):
                 self.start()
@@ -203,6 +203,50 @@ class ProbeTests(unittest.TestCase):
         self.cnc.report_time -= 4
         self.cnc.probe.tick(self.cnc)
         self.assertTrue(self.port.closed)
+
+
+    def test_polarity_setting_is_confirmed_and_read_back(self):
+        self.cnc.info = ["$6=0", "$13=0"]
+        replies = [self.modal, ["$6=0", "$13=0"], [],
+                   ["$6=1", "$13=0"]]
+        with patch.object(self.cnc, "_status"), patch.object(
+            self.cnc, "_line", side_effect=replies
+        ) as command:
+            self.cnc.action("probe_polarity", {
+                "confirmed": True, "before": False, "inverted": True,
+            })
+        self.assertEqual([call.args[0] for call in command.call_args_list],
+                         ["$G", "$$", "$6=1", "$$"])
+        self.assertTrue(self.cnc.status()["probe_inverted"])
+        self.assertFalse(self.cnc.probe_tested)
+        self.assertEqual(self.port.writes, [])
+
+    def test_polarity_guards_and_failure_never_retry_setting(self):
+        payload = {"confirmed": True, "before": False, "inverted": True}
+        with self.assertRaises(ValueError):
+            self.cnc.action("probe_polarity", {**payload, "confirmed": False})
+        with patch.object(self.cnc, "_status"), patch.object(
+            self.cnc, "_line", return_value=["[GC:G0 G54 M3]"]
+        ) as command:
+            with self.assertRaises(ValueError):
+                self.cnc.action("probe_polarity", payload)
+            self.assertEqual(command.call_count, 1)
+        with patch.object(self.cnc, "_status"), patch.object(
+            self.cnc, "_line", side_effect=[self.modal, ["$6=1"]]
+        ) as command:
+            with self.assertRaises(ValueError):
+                self.cnc.action("probe_polarity", payload)
+            self.assertEqual(command.call_count, 2)
+        with patch.object(self.cnc, "_status"), patch.object(
+            self.cnc, "_line", side_effect=[
+                self.modal, ["$6=0"], RuntimeError("timeout"),
+            ]
+        ) as command:
+            with self.assertRaises(RuntimeError):
+                self.cnc.action("probe_polarity", payload)
+            self.assertEqual(command.call_count, 3)
+        self.assertTrue(self.port.closed)
+        self.assertFalse(self.cnc.probe_tested)
 
 
 if __name__ == "__main__":

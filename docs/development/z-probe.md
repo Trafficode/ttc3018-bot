@@ -35,7 +35,11 @@ together for at least one second when testing.
 Start requires Idle, no active file job, a fresh work position and MPos (machine
 position), a successful input test and an untriggered input. The backend checks
 the confirmed position again, current modal G54/G21/G90/G94/M5, and the connection
-settings `$6=0` and `$13=0`. It never changes those settings automatically.
+settings `$6=1` and `$13=0`. This installation requires inverted probe logic,
+confirmed by the operator's open/closed clip test. The inversion is stored in
+the controller, so both the live indicator and G38.2 use the same contact logic.
+There is no UI-only inversion or polarity toggle. Normal connection and probing
+never write these settings automatically.
 
 The bounded `G38.2` descent must return a successful `[PRB:...:1]` and subsequent
 Idle. The controller's captured machine position is used to compensate for
@@ -68,6 +72,10 @@ Idle report since this connection. `cnc.z_probe` exposes phase, active state and
 error. CSRF-protected actions are `probe_start` (confirmed, distance, feed and
 expected position), `probe_heartbeat` (owner lease) and `probe_stop`.
 Only explicit start returns the private `probe_lease`; status does not expose it.
+The maintenance action `probe_polarity` writes only `$6` with confirmation,
+expected previous value, fresh Idle and M5 guards, then reads the setting back.
+It resets the input test and never retries an uncertain write. It is not exposed
+as an operator UI control. `probe_inverted` reports the cached firmware setting.
 
 Run `python -m unittest discover -s tests -v`, `node tests/test_web.cjs`,
 `node tests/test_probe_web.cjs`, and the UI build. Local browser checks use a mock
