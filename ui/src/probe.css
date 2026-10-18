@@ -1,0 +1,17 @@
+/* The probe badge reports the logical input, never a latched old contact. */
+.environment{flex-wrap:wrap;gap:12px}
+.environment .probe-indicator{display:flex;align-items:center;gap:6px;padding:8px 10px;border:2px solid #c5c3bc;border-radius:4px;min-height:42px}
+.environment .probe-indicator>span{font-size:10px;font-weight:700;margin:0;color:inherit}
+.environment .probe-indicator strong{font-size:12px;letter-spacing:.3px}
+.probe-indicator.contact{background:#d6f5df;border-color:#167342;color:#105f35}
+.probe-indicator.open{background:#efeee9;color:#50565f}
+.probe-indicator.unavailable{background:#fff1d8;border-color:#c9933b;color:#805000}
+.zero-probe{border-top:1px solid var(--border);margin-top:24px;padding-top:20px;font-size:13px;line-height:1.5}
+.zero-probe h3{font-size:18px;margin:0 0 8px}
+.zero-probe p{margin:8px 0 14px}
+.zero-probe .probe-check{background:#f0efea;padding:10px;border-left:3px solid var(--accent);font-size:12px}
+.probe-inputs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.probe-inputs input{margin-top:6px}
+.zero-probe>button{width:100%;margin:5px 0}
+@media(min-width:1101px){.environment{max-width:280px}.environment .probe-indicator{width:100%;justify-content:center}}
+@media(max-width:760px){.environment{gap:10px 20px}.environment .probe-indicator{width:100%;justify-content:center;padding:6px 10px;min-height:36px}.environment .probe-indicator strong{font-size:13px}.environment .probe-indicator>span{font-size:11px}.environment .probe-indicator svg{width:20px;height:20px}.zero-probe{margin-top:18px;padding-top:14px}.zero-probe h3{font-size:17px}.probe-inputs{gap:10px}.probe-inputs label{font-size:12px}}

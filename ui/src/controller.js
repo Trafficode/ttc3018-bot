@@ -13,11 +13,13 @@ export function createController(fetcher = fetch, clock = globalThis) {
   const acknowledgedStop = signal(-1);
   const cnc = computed(() => data.value?.cnc || {});
   const job = computed(() => cnc.value.job || {state: 'empty'});
-  const active = computed(() => activeStates.includes(job.value.state));
+  const probing = computed(() => cnc.value.z_probe?.active === true);
+  const active = computed(() => activeStates.includes(job.value.state) || probing.value);
   const known = computed(() => !!data.value && !offline.value);
   const manualReady = computed(() => known.value && cnc.value.connected && cnc.value.fresh && cnc.value.state === 'Idle' && !active.value && !pending.value);
   const connectReady = computed(() => known.value && !active.value && !pending.value && (!cnc.value.connected || (cnc.value.fresh && cnc.value.state === 'Idle')));
   let lease = null;
+  let probeLease = null;
   let running = false;
   let pollTimer;
   let heartbeatTimer;
@@ -39,6 +41,7 @@ export function createController(fetcher = fetch, clock = globalThis) {
     if (offline.value) return {tone: attempted.value ? 'error' : 'info', text: attempted.value ? 'Brak odpowiedzi panelu. Stan CNC nieznany — sprawdź maszynę.' : 'Łączenie z panelem stanowiska…'};
     if (cnc.value.connected && !cnc.value.fresh) return {tone: 'error', text: 'Brak aktualnego odczytu CNC. Sprawdź maszynę; sterowanie jest zablokowane.'};
     if (cnc.value.state === 'Alarm') return {tone: 'error', text: 'Sterownik zgłasza alarm. Sprawdź maszynę i wrzeciono.'};
+    if (probing.value) return {tone: 'warning', text: 'Automatyczne zero Z: sondowanie aktywne. Pozostań przy stanowisku.'};
     if (job.value.state === 'failed') return {tone: 'error', text: job.value.error || 'Błąd programu. Sprawdź maszynę; nie ponawiaj poleceń w ciemno.'};
     if (actionError.value) return {tone: 'error', text: actionError.value, dismissible: true};
     if (job.value.state === 'stopped' && acknowledgedStop.value !== stopEpoch.value) return {tone: 'warning', text: 'Program przerwany. Sprawdź wrzeciono, połączenie i zero materiału.', dismissible: true};
@@ -57,6 +60,7 @@ export function createController(fetcher = fetch, clock = globalThis) {
         if (!response.ok) throw new Error('Brak odpowiedzi');
         const next = await response.json();
         const oldJob = job.value;
+        const oldProbe = cnc.value.z_probe?.state;
         if (next.cnc.job?.state === 'stopped' && (oldJob.state !== 'stopped' || oldJob.id !== next.cnc.job.id)) stopEpoch.value++;
         connectionLost = next.cnc.connected ? false : (connectionLost || (wasConnected && !intentionalDisconnect));
         wasConnected = next.cnc.connected;
@@ -64,6 +68,9 @@ export function createController(fetcher = fetch, clock = globalThis) {
         intentionalDisconnect = false;
         data.value = next;
         offline.value = false;
+        if (!next.cnc.z_probe?.active) probeLease = null;
+        if (next.cnc.z_probe?.state === 'completed' && oldProbe !== 'completed') info('Zero Z ustawione sondą. Frez odsunięty 1 mm; zdejmij krokodylek przed włączeniem wrzeciona.');
+        if (['failed', 'stopped'].includes(next.cnc.z_probe?.state) && oldProbe !== next.cnc.z_probe.state) error(next.cnc.z_probe.error || 'Sondowanie przerwane. Sprawdź maszynę i zero.');
         if (!activeStates.includes(next.cnc.job?.state)) lease = null;
         if (next.cnc.job?.state === 'completed' && activeStates.includes(oldJob.state)) info('Program zakończony. Sterownik zgłasza bezczynność.');
         const condition = [next.cnc.state === 'Alarm' ? 'Alarm CNC' : '', next.cnc.job?.error || ''].filter(Boolean).join(' · ');
@@ -86,6 +93,7 @@ export function createController(fetcher = fetch, clock = globalThis) {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Błąd sterownika');
       if (result.lease) lease = result.lease;
+      if (result.probe_lease) probeLease = result.probe_lease;
       intentionalDisconnect = ['disconnect', 'job_stop'].includes(action);
       const messages = {connect: 'CNC połączone.', disconnect: 'CNC rozłączone przez operatora.', zero_xy: 'Zero X/Y ustawione.', zero_z: 'Zero Z ustawione.', job_load: 'Plik sprawdzony. Start wymaga potwierdzenia.', job_clear: 'Plik usunięty.', job_start: 'Uruchomienie programu zlecone.', job_pause: 'Pauza zlecona.', job_resume: 'Wznowienie zlecone.', job_stop: 'Przerwanie programu zlecone.', spindle_on: 'Polecenie włączenia wrzeciona przyjęte.', spindle_off: 'Polecenie wyłączenia wrzeciona przyjęte.'};
       if (messages[action]) info(messages[action]);
@@ -104,17 +112,20 @@ export function createController(fetcher = fetch, clock = globalThis) {
     return send(payload);
   }
   async function heartbeat() {
+    if (probeLease && probing.value && data.value?.control_token) {
+      try { await fetcher('/api/cnc/action', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-PiloMill-Token': data.value.control_token}, body: JSON.stringify({action: 'probe_heartbeat', lease: probeLease}), signal: AbortSignal.timeout(2000)}); } catch { /* The RPi aborts a probe if its owning browser disappears. */ }
+    }
     if (lease && active.value && data.value?.control_token) {
       try { await fetcher('/api/cnc/action', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-PiloMill-Token': data.value.control_token}, body: JSON.stringify({action: 'job_heartbeat', lease}), signal: AbortSignal.timeout(2000)}); } catch { /* RPi expires the lease and requests hold. */ }
     }
     if (running) heartbeatTimer = clock.setTimeout(heartbeat, 2000);
   }
-  async function poll() { await refresh(); if (running) pollTimer = clock.setTimeout(poll, 3000); }
+  async function poll() { await refresh(); if (running) pollTimer = clock.setTimeout(poll, known.value && cnc.value.connected ? 500 : 3000); }
   function start() { if (running) return; running = true; poll(); heartbeat(); }
   function stop() { running = false; clock.clearTimeout(pollTimer); clock.clearTimeout(heartbeatTimer); clock.clearTimeout(messageTimer); }
   function acknowledge() {
     if (actionError.value) actionError.value = '';
     else if (job.value.state === 'stopped') {acknowledgedStop.value = stopEpoch.value; latest.value = '';}
   }
-  return {data, cnc, job, active, known, manualReady, connectReady, pending, offline, notice, events, refresh, send, snapshot, confirmedSend, info, error, start, stop, acknowledge};
+  return {data, cnc, job, active, probing, known, manualReady, connectReady, pending, offline, notice, events, refresh, send, snapshot, confirmedSend, info, error, start, stop, acknowledge};
 }

@@ -19,16 +19,16 @@ The execution buttons remain outside the scrolling file contents.
 
 ## Current scope
 
-This release implements the planning UI only. The Start measurement button is
-disabled with an explicit explanation. The backend does not yet implement
-G38.2 probing, probe-input diagnostics, height acquisition or Z compensation.
+This File section implements the planning UI only. The Start measurement button
+is disabled with an explicit explanation. Probe diagnostics and single-point
+automatic Z zero are available separately in [Zero](z-probe.md). Grid height
+acquisition and surface Z compensation are not implemented.
 Existing milling executes the original validated program without compensation.
 No generated illustration of traces is presented as an actual file preview.
 
-Further measurement work must use the existing single serial owner and add
-probe detection, spindle-off checks, bounded travel, cancellation, browser-loss
-handling, coordinate/map invalidation and compensation coverage checks. Validate
-the DLC32 probe input before physical probing. The operator initiates all motion.
+Further grid measurement work must use the existing serial owner and preserve
+the single-point probing guards. It must also add coordinate/map invalidation
+and compensation coverage checks. The operator initiates all motion.
 
 ## Validation
 

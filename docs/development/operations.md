@@ -131,6 +131,8 @@ Command errors remain in the topbar notice until acknowledged. CNC alarm, job
 failure, stale CNC reports and lost panel contact remain visible while the
 underlying condition persists. Acknowledging a command message sends no command.
 The topbar owns connection state, positions, environment and the current notice.
+Its PROBE indicator reports digital contact without moving any axis. The Zero
+tab also offers guarded single-point probing; see [probe workflow](z-probe.md).
 Its details disclosure contains session history. There are no separate tool
 status messages or floating toasts. See [frontend source and spindle preset](operator-ui.md).
 

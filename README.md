@@ -10,12 +10,14 @@ DHT22 on GPIO17 and private Tailscale access.
 - [System boundaries and next components](docs/architecture/system.md)
 - [Build and operate the component-based panel](docs/development/operator-ui.md)
 - [Plan PCB surface measurements](docs/development/surface-plan.md)
+- [Check the probe and set automatic Z zero](docs/development/z-probe.md)
 - [10 mm PCB starter coupon and CAM files](docs/reference/pcb-cnc-coupon-10mm-cam.md)
 - [40 mm PCB reference coupon](docs/reference/pcb-cnc-coupon-40mm.md)
 
 Bark Beetle provides camera video, environmental telemetry and explicit manual CNC
 controls through private Tailscale Serve. The operator connects USB, jogs, sets
 material zero and controls the spindle. There is no automatic USB reconnect,
-homing, probing or unlock. File jobs support explicitly started linear GRBL
+homing or unlock. Z probing starts only with operator confirmation and a verified
+probe-input test. File jobs support explicitly started linear GRBL
 programs; see [file jobs and limits](docs/development/file-jobs.md).
 See the operations guide for the first supervised test.

@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # cnc.py
-# 2026-10-12
-# - Single USB owner, bounded manual commands and explicit file-job actions.
+# 2026-10-18
+# - Single USB owner, pin diagnostics, bounded Z probing and file jobs.
 # ---------------------------------------------------------------------------
 """Manual CNC access; never reconnect, home, unlock or start jobs implicitly."""
 
@@ -9,6 +9,7 @@ import math
 import threading
 import time
 from monitor.jobs import JobRunner, parse_program
+from monitor.probes import ZProbe
 
 SERIAL_PATH = "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
 
@@ -18,10 +19,13 @@ def parse_status(line):
     if not line.startswith("<") or not line.endswith(">"):
         raise ValueError("Invalid status report")
     parts = line[1:-1].split("|")
-    result = {"state": parts[0], "position": None, "offset": None}
+    result = {"state": parts[0], "position": None, "offset": None,
+              "probe_triggered": False}
     values = {}
     for part in parts[1:]:
         key, _, value = part.partition(":")
+        if key == "Pn":
+            result["probe_triggered"] = "P" in value
         if key in ("MPos", "WPos", "WCO"):
             coordinates = [float(item) for item in value.split(",")[:3]]
             if len(coordinates) != 3:
@@ -72,8 +76,11 @@ class Controller:
         self.error = "Niepodłączona — połącz przy maszynie."
         self.info = []
         self.jobs = JobRunner()
+        self.probe = ZProbe()
+        self.probe_tested = False
 
     def _close(self, error):
+        self.probe_tested = False
         if self.port is not None:
             self.port.close()
         self.port = None
@@ -106,6 +113,8 @@ class Controller:
     def _accept_status(self, line):
         """Update cached coordinates from either polling or the job reader."""
         report = parse_status(line)
+        if report["state"] == "Idle" and report["probe_triggered"]:
+            self.probe_tested = True
         if "WCO" in report:
             self.offset = report["WCO"]
         position = report.get("WPos")
@@ -190,6 +199,11 @@ class Controller:
                 "age_seconds": age,
                 "info": self.info,
                 "job": self.jobs.status(),
+                "probe_triggered": (
+                    self.report["probe_triggered"] if fresh else None
+                ),
+                "probe_tested": self.probe_tested,
+                "z_probe": self.probe.status(),
             }
 
     def disconnect(self):
@@ -218,6 +232,23 @@ class Controller:
                 raise RuntimeError(str(error)) from error
 
     def action(self, action, payload):
+        """Exclude all other senders while a probe owns the serial stream."""
+        with self.lock:
+            if action == "probe_stop":
+                return self.probe.cancel()
+            if action == "probe_heartbeat":
+                return self.probe.heartbeat(payload.get("lease"))
+            if self.probe.active():
+                raise ValueError("Sondowanie aktywne — użyj Przerwij sondę.")
+            if action == "probe_start":
+                try:
+                    return self.probe.start(self, payload)
+                except RuntimeError as error:
+                    self._close(str(error))
+                    raise
+            return self._action(action, payload)
+
+    def _action(self, action, payload):
         """Perform one manual command; failures close and never retry USB."""
         if action in ("job_pause", "job_resume", "job_stop"):
             if action == "job_resume" and payload.get("confirmed") is not True:
@@ -306,7 +337,9 @@ class Controller:
         last_poll = 0
         while not stop.wait(0.02):
             with self.lock:
-                if self.jobs.active():
+                if self.probe.active():
+                    self.probe.tick(self)
+                elif self.jobs.active():
                     self.jobs.tick(self)
                 elif self.port is not None and (
                     time.monotonic() - last_poll >= 0.5
@@ -317,6 +350,8 @@ class Controller:
                     except Exception as error:
                         self._close(str(error))
         with self.lock:
+            if self.probe.active():
+                self.probe.abort(self, "Usługa zatrzymana podczas sondowania.")
             if self.jobs.active():
                 self.jobs.abort(self, "Usługa zatrzymana podczas zadania.")
             self._close("Service stopped")
