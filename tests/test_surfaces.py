@@ -80,6 +80,7 @@ class SurfaceTests(unittest.TestCase):
         self.assertEqual(surface.state, "completed")
         self.assertEqual(len(surface.samples), 9)
         self.assertEqual(surface.offset, [0, 0, 5])
+        self.assertEqual(surface.status()["reference_xy"], [0, 0])
         self.assertEqual(surface.job_id, self.cnc.jobs.job_id)
         self.assertEqual(sum(b"G38.2" in v for v in self.port.writes), 10)
         self.assertEqual(sum(b"G10" in v for v in self.port.writes), 1)

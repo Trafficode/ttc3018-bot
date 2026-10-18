@@ -15,8 +15,10 @@ locate copper or clamps. Confirm those physically before starting.
 3. Position the tool close above copper at the current X/Y. Start measurement
    and confirm. The first touch is a reference at that current point, followed
    by the selected grid. It is one extra touch beyond the grid point count.
-4. Watch the map and progress. Green points have measured Z, amber marks the
-   next point, gray points are pending. The point list includes measured Z.
+4. Watch the map and progress. Each measured point shows signed delta Z in mm
+   relative to surface height at X=0, Y=0. Brown is higher, blue lower and green
+   zero (rounded to 0.001 mm); gray points are pending. Min/max and total height
+   difference summarize the measured area. Dense grids can be scrolled.
    Stop aborts the whole scan; it cannot resume a partial map.
 5. When the map is complete, remove the tool clip before starting the spindle.
    The compensation checkbox is enabled and selected for the matching plan.
@@ -35,6 +37,15 @@ search depth 0.1–2 mm and probe feed 10–60 mm/min. Total grid descent cannot
 clears the PCB and all fixtures along the entire route.
 
 ## Ownership, validity and failures
+
+The displayed origin uses a measured grid point at 0,0 when available, otherwise
+the initial reference touch if it was at 0,0. An origin inside the grid can use
+bilinear interpolation once all required neighbours have been measured; the UI
+labels this explicitly. There is no extrapolation outside the map. Until a
+baseline exists, points show that a measurement exists without claiming a delta.
+The point list uses the same deltas. This display conversion does not change raw
+probe heights, reference zero or compensation. Three decimal places are display
+precision, not a claim of machine accuracy.
 
 The RPi generates and validates every point; the browser does not supply an
 unchecked movement list. The existing single serial owner performs probing.

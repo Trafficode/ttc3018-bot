@@ -77,6 +77,7 @@ class SurfaceScan(ZProbe):
         self.area = None
         self.offset = None
         self.reference = None
+        self.reference_xy = None
         self.sampling = False
         self.clearance = 2
 
@@ -95,6 +96,7 @@ class SurfaceScan(ZProbe):
             "kind": "surface", "id": self.map_id, "job_id": self.job_id,
             "valid": self.valid, "reason": self.reason, "area": self.area,
             "points": self.points, "samples": self.samples,
+            "reference_xy": self.reference_xy,
             "completed": len(self.samples), "total": len(self.points),
             "columns": getattr(self, "columns", None),
             "rows": getattr(self, "rows", None),
@@ -116,6 +118,7 @@ class SurfaceScan(ZProbe):
         if controller.offset is None:
             raise ValueError("Brak odczytu WCO; zaczekaj na status CNC.")
         result = super().start(controller, payload)
+        self.reference_xy = controller.report["position"][:2]
         self.expected_xy_offset = controller.offset[:2]
         self.map_id = secrets.token_hex(12)
         self.job_id = controller.jobs.job_id

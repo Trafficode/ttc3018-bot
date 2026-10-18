@@ -1,4 +1,41 @@
 // Work-coordinate planning only. This module never sends machine commands.
+export function surfaceHeights(map) {
+  const samples = map?.samples || [];
+  const near = (a, b) => Math.abs(a - b) < 0.00001;
+  const origin = samples.find(point => near(point.x, 0) && near(point.y, 0));
+  let baseline = origin?.z;
+  let source = origin ? 'measured' : null;
+  if (baseline === undefined && map?.reference_xy?.every(value => near(value, 0))) {
+    baseline = 0;
+    source = 'reference';
+  }
+  // Interpolate only inside the map, using already measured neighbours.
+  if (baseline === undefined && map?.area && map.columns >= 2 && map.rows >= 2) {
+    const axes = ['X', 'Y'].map((axis, index) => {
+      const [low, high] = map.area[axis];
+      if (low > 0 || high < 0) return null;
+      const count = index ? map.rows : map.columns;
+      const step = (high - low) / (count - 1);
+      const cell = Math.min(count - 2, Math.floor(-low / step));
+      const fraction = (-low - cell * step) / step;
+      return [[low + cell * step, 1 - fraction], [low + (cell + 1) * step, fraction]];
+    });
+    if (axes.every(Boolean)) {
+      let height = 0, complete = true;
+      for (const [x, wx] of axes[0]) for (const [y, wy] of axes[1]) {
+        if (wx * wy < 1e-10) continue;
+        const point = samples.find(item => near(item.x, x) && near(item.y, y));
+        if (!point) complete = false;
+        else height += point.z * wx * wy;
+      }
+      if (complete) {baseline = height; source = 'interpolated';}
+    }
+  }
+  const values = baseline === undefined ? [] : samples.map(point => ({...point, delta: point.z - baseline}));
+  return {source, values, min: values.length ? Math.min(...values.map(point => point.delta)) : null,
+    max: values.length ? Math.max(...values.map(point => point.delta)) : null};
+}
+
 export function defaultSurfaceSettings(bounds) {
   return {columns: 3, rows: 3, clearance: 2, below: 1, distance: 1, feed: 20, area: {
     X: [...bounds.X], Y: [...bounds.Y]
