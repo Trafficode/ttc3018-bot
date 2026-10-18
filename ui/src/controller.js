@@ -41,7 +41,7 @@ export function createController(fetcher = fetch, clock = globalThis) {
     if (offline.value) return {tone: attempted.value ? 'error' : 'info', text: attempted.value ? 'Brak odpowiedzi panelu. Stan CNC nieznany — sprawdź maszynę.' : 'Łączenie z panelem stanowiska…'};
     if (cnc.value.connected && !cnc.value.fresh) return {tone: 'error', text: 'Brak aktualnego odczytu CNC. Sprawdź maszynę; sterowanie jest zablokowane.'};
     if (cnc.value.state === 'Alarm') return {tone: 'error', text: 'Sterownik zgłasza alarm. Sprawdź maszynę i wrzeciono.'};
-    if (probing.value) return {tone: 'warning', text: 'Automatyczne zero Z: sondowanie aktywne. Pozostań przy stanowisku.'};
+    if (probing.value) return {tone: 'warning', text: cnc.value.z_probe.kind === 'surface' ? `Pomiar powierzchni: ${cnc.value.z_probe.completed} / ${cnc.value.z_probe.total} punktów. Pozostań przy stanowisku.` : 'Automatyczne zero Z: sondowanie aktywne. Pozostań przy stanowisku.'};
     if (job.value.state === 'failed') return {tone: 'error', text: job.value.error || 'Błąd programu. Sprawdź maszynę; nie ponawiaj poleceń w ciemno.'};
     if (actionError.value) return {tone: 'error', text: actionError.value, dismissible: true};
     if (job.value.state === 'stopped' && acknowledgedStop.value !== stopEpoch.value) return {tone: 'warning', text: 'Program przerwany. Sprawdź wrzeciono, połączenie i zero materiału.', dismissible: true};
@@ -69,7 +69,7 @@ export function createController(fetcher = fetch, clock = globalThis) {
         data.value = next;
         offline.value = false;
         if (!next.cnc.z_probe?.active) probeLease = null;
-        if (next.cnc.z_probe?.state === 'completed' && oldProbe !== 'completed') info('Zero Z ustawione sondą. Frez odsunięty 1 mm; zdejmij krokodylek przed włączeniem wrzeciona.');
+        if (next.cnc.z_probe?.state === 'completed' && oldProbe && oldProbe !== 'completed' && next.cnc.connected && (next.cnc.z_probe.kind !== 'surface' || next.cnc.surface_map?.valid)) info(next.cnc.z_probe.kind === 'surface' ? 'Mapa powierzchni gotowa do kompensacji Z. Zdejmij krokodylek z frezu przed uruchomieniem wrzeciona.' : 'Zero Z ustawione sondą. Frez odsunięty 1 mm; zdejmij krokodylek przed włączeniem wrzeciona.');
         if (['failed', 'stopped'].includes(next.cnc.z_probe?.state) && oldProbe !== next.cnc.z_probe.state) error(next.cnc.z_probe.error || 'Sondowanie przerwane. Sprawdź maszynę i zero.');
         if (!activeStates.includes(next.cnc.job?.state)) lease = null;
         if (next.cnc.job?.state === 'completed' && activeStates.includes(oldJob.state)) info('Program zakończony. Sterownik zgłasza bezczynność.');
@@ -103,7 +103,7 @@ export function createController(fetcher = fetch, clock = globalThis) {
   }
 
   // Only explicit UI confirmation calls this. Polling and mounting never execute actions.
-  function snapshot() { return JSON.stringify([cnc.value.connected, cnc.value.position, job.value.id]); }
+  function snapshot() { return JSON.stringify([cnc.value.connected, cnc.value.position, job.value.id, cnc.value.surface_map?.id, cnc.value.surface_map?.valid]); }
   async function confirmedSend(payload, before, valid) {
     await refresh(true);
     if (!known.value || pending.value || snapshot() !== before || !valid()) {

@@ -28,7 +28,8 @@ together for at least one second when testing.
 6. Select automatic Z zero and confirm at the machine. The tool descends only
    along Z, sets the copper contact as G54 Z=0, then moves to Z=1 mm.
 7. Remove the tool clip before starting the spindle. Check the result before
-   machining. This is a single-point zero, not a surface height map.
+   machining. This Zero-tab action measures one point. For a full grid and
+   compensated file execution use [File surface measurement](surface-plan.md).
 
 ## Guards and failure behavior
 

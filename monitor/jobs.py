@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # jobs.py
-# 2026-10-12
-# - Validated linear GRBL programs and a single-owner asynchronous sender.
+# 2026-10-18
+# - Validated original/compensated GRBL streams and one asynchronous sender.
 # ---------------------------------------------------------------------------
 """Upload never touches USB; only explicit operator start/resume runs code."""
 
@@ -165,6 +165,7 @@ class JobRunner:
     def __init__(self):
         self.lock = threading.RLock()
         self.program = None
+        self.execution = None
         self.job_id = None
         self.state = "empty"
         self.acknowledged = 0
@@ -190,6 +191,7 @@ class JobRunner:
             if self.active():
                 raise ValueError("Najpierw zakończ lub przerwij zadanie.")
             self.program = program
+            self.execution = None
             self.job_id = secrets.token_hex(12)
             self.state = "ready"
             self.acknowledged = 0
@@ -197,13 +199,14 @@ class JobRunner:
             self.pending = None
             self.error_line = None
 
-    def start(self, job_id):
+    def start(self, job_id, execution=None):
         """Create a fresh browser lease; starting never happens implicitly."""
         with self.lock:
             if self.state not in ("ready", "completed", "stopped", "failed"):
                 raise ValueError("Zadanie nie jest gotowe.")
             if self.program is None or job_id != self.job_id:
                 raise ValueError("Plik się zmienił — odśwież podgląd.")
+            self.execution = execution
             self.state = "running"
             self.acknowledged = 0
             self.pending = None
@@ -223,6 +226,7 @@ class JobRunner:
             if self.active():
                 raise ValueError("Najpierw przerwij aktywne zadanie.")
             self.program = None
+            self.execution = None
             self.job_id = None
             self.state = "empty"
             self.acknowledged = 0
@@ -263,7 +267,7 @@ class JobRunner:
     def status(self):
         """Report accepted lines separately from physical job completion."""
         with self.lock:
-            program = self.program
+            program = self.execution or self.program
             total = len(program["lines"]) if program else 0
             source_line = self.error_line
             if self.pending is not None and program:
@@ -276,6 +280,7 @@ class JobRunner:
                 "bounds_mm": program["bounds_mm"] if program else None,
                 "max_feed": program["max_feed"] if program else None,
                 "max_power": program["max_power"] if program else None,
+                "compensated": self.execution is not None,
             }
 
     def abort(self, controller, reason, state="failed"):
@@ -288,7 +293,8 @@ class JobRunner:
                 pass  # Lost USB cannot guarantee machine or spindle stop.
             self.state = state
             if self.pending is not None and self.program:
-                command = self.program["lines"][self.pending]
+                program = self.execution or self.program
+                command = program["lines"][self.pending]
                 self.error_line = command["source_line"]
             self.error = reason + (
                 " Sprawdź wrzeciono; połącz i ustaw zero ponownie."
@@ -390,7 +396,7 @@ class JobRunner:
                             "Brak potwierdzenia linii; bez ponawiania."
                         )
                 if self.state == "running" and self.pending is None:
-                    commands = self.program["lines"]
+                    commands = (self.execution or self.program)["lines"]
                     if self.acknowledged == len(commands):
                         # ok means accepted; only a subsequent Idle means done.
                         self.state = "draining"

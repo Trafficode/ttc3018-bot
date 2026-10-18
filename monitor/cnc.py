@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # cnc.py
 # 2026-10-18
-# - Single USB owner, pin diagnostics, bounded Z probing and file jobs.
+# - Single USB owner, grid probing, bound height maps and compensated file jobs.
 # ---------------------------------------------------------------------------
 """Manual CNC access; never reconnect, home, unlock or start jobs implicitly."""
 
@@ -10,6 +10,8 @@ import threading
 import time
 from monitor.jobs import JobRunner, parse_program
 from monitor.probes import ZProbe
+from monitor.surfaces import SurfaceScan
+from monitor.compensation import compensate_program, live_offset
 
 SERIAL_PATH = "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
 
@@ -77,9 +79,12 @@ class Controller:
         self.info = []
         self.jobs = JobRunner()
         self.probe = ZProbe()
+        self.surface = SurfaceScan()
+        self.last_probe = self.probe
         self.probe_tested = False
 
     def _close(self, error):
+        self.surface.invalidate("Połączenie CNC zostało przerwane.")
         self.probe_tested = False
         if self.port is not None:
             self.port.close()
@@ -117,6 +122,14 @@ class Controller:
             self.probe_tested = True
         if "WCO" in report:
             self.offset = report["WCO"]
+            if self.surface.valid and any(abs(a - b) > 0.002 for a, b in zip(
+                self.offset, self.surface.offset
+            )):
+                self.surface.invalidate("Zero materiału zmieniło się.")
+                if self.jobs.active() and self.jobs.execution is not None:
+                    raise RuntimeError(
+                        "Zero mapy zmieniło się podczas programu."
+                    )
         position = report.get("WPos")
         if position is None and "MPos" in report and self.offset is not None:
             position = []
@@ -211,7 +224,8 @@ class Controller:
                 ),
                 "probe_tested": self.probe_tested,
                 "probe_inverted": inverted,
-                "z_probe": self.probe.status(),
+                "z_probe": self.last_probe.status(),
+                "surface_map": self.surface.status(),
             }
 
     def disconnect(self):
@@ -243,14 +257,22 @@ class Controller:
         """Exclude all other senders while a probe owns the serial stream."""
         with self.lock:
             if action == "probe_stop":
-                return self.probe.cancel()
+                return self.last_probe.cancel()
             if action == "probe_heartbeat":
-                return self.probe.heartbeat(payload.get("lease"))
-            if self.probe.active():
+                return self.last_probe.heartbeat(payload.get("lease"))
+            if self.last_probe.active():
                 raise ValueError("Sondowanie aktywne — użyj Przerwij sondę.")
-            if action == "probe_start":
+            if action in ("probe_start", "surface_start"):
                 try:
-                    return self.probe.start(self, payload)
+                    runner = (
+                        self.surface if action == "surface_start"
+                        else self.probe
+                    )
+                    result = runner.start(self, payload)
+                    self.last_probe = runner
+                    if action == "probe_start":
+                        self.surface.invalidate("Ponownie ustawiono zero Z.")
+                    return result
                 except RuntimeError as error:
                     self._close(str(error))
                     raise
@@ -298,6 +320,7 @@ class Controller:
         finally:
             # A polarity change invalidates every previous contact test.
             self.probe_tested = False
+            self.surface.invalidate("Zmiana polaryzacji sondy.")
 
     def _action(self, action, payload):
         """Perform one manual command; failures close and never retry USB."""
@@ -308,11 +331,14 @@ class Controller:
         if action == "job_heartbeat":
             return self.jobs.heartbeat(payload.get("lease"))
         if action == "job_clear":
-            return self.jobs.clear()
+            result = self.jobs.clear()
+            self.surface.invalidate("Usunięto plik.")
+            return result
         if action == "job_load":
             program = parse_program(payload.get("name"), payload.get("content"))
             with self.lock:
                 self.jobs.load(program)
+                self.surface.invalidate("Wczytano inny plik.")
             return
         if action == "job_start":
             with self.lock:
@@ -336,7 +362,25 @@ class Controller:
                     raise ValueError(
                         "Start wymaga G54 i wyłączonego wrzeciona."
                     )
-                return self.jobs.start(payload.get("job_id"))
+                execution = None
+                if payload.get("surface_map_id") is not None:
+                    surface = self.surface
+                    if not surface.valid or surface.map_id != payload.get(
+                        "surface_map_id"
+                    ) or surface.job_id != self.jobs.job_id:
+                        raise ValueError(
+                            "Mapa jest nieaktualna; powtórz pomiar."
+                        )
+                    offset = live_offset(self._line("$#"))
+                    if any(abs(a - b) > 0.002 for a, b in zip(
+                        offset, surface.offset
+                    )):
+                        surface.invalidate("Zero materiału zmieniło się.")
+                        raise ValueError("Zero mapy zmieniło się.")
+                    execution = compensate_program(
+                        self.jobs.program, surface
+                    )
+                return self.jobs.start(payload.get("job_id"), execution)
         with self.lock:
             if self.jobs.active():
                 raise ValueError(
@@ -376,6 +420,7 @@ class Controller:
                 # Changing zero invalidates the cached work offset.
                 if action.startswith("zero_"):
                     self.offset = None
+                    self.surface.invalidate("Ręcznie zmieniono zero materiału.")
                 self._status()
             except ValueError:
                 raise
@@ -388,8 +433,8 @@ class Controller:
         last_poll = 0
         while not stop.wait(0.02):
             with self.lock:
-                if self.probe.active():
-                    self.probe.tick(self)
+                if self.last_probe.active():
+                    self.last_probe.tick(self)
                 elif self.jobs.active():
                     self.jobs.tick(self)
                 elif self.port is not None and (
@@ -401,8 +446,10 @@ class Controller:
                     except Exception as error:
                         self._close(str(error))
         with self.lock:
-            if self.probe.active():
-                self.probe.abort(self, "Usługa zatrzymana podczas sondowania.")
+            if self.last_probe.active():
+                self.last_probe.abort(
+                    self, "Usługa zatrzymana podczas sondowania."
+                )
             if self.jobs.active():
                 self.jobs.abort(self, "Usługa zatrzymana podczas zadania.")
             self._close("Service stopped")

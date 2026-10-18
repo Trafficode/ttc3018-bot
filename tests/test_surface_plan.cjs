@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 
 (async () => {
   const {createSurfacePlan, defaultSurfaceSettings} = await import('../ui/src/surface-plan.js');
+  const {surfaceRequest, surfaceMatches} = await import('../ui/src/surface-plan.js');
   const bounds = {X: [-2, 8], Y: [5, 15]};
   const settings = defaultSurfaceSettings(bounds);
   const plan = createSurfacePlan(bounds, settings);
@@ -26,5 +27,12 @@ const assert = require('node:assert/strict');
   assert.equal(expanded.error, undefined);
   assert.deepEqual(bounds, {X: [-2, 8], Y: [5, 15]}, 'Planning cannot mutate uploaded bounds');
   assert.deepEqual(settings.area, bounds);
+  assert.equal(surfaceRequest(bounds, settings).clearance, 2);
+  assert.equal(surfaceRequest(bounds, {...settings, clearance:0}).error !== undefined, true);
+  assert.equal(surfaceRequest(bounds, {...settings, below:3}).error !== undefined, true);
+  const map = {id:'map', job_id:'file', columns:3, rows:3, area:bounds};
+  assert.equal(surfaceMatches(map,'file',settings,bounds),true);
+  assert.equal(surfaceMatches(map,'other',settings,bounds),false);
+  assert.equal(surfaceMatches(map,'file',{...settings,columns:5},bounds),false);
   console.log('Surface grid: absolute work coordinates, serpentine order, density, coverage and finite limits: PASS');
 })().catch(error => {console.error(error); process.exitCode = 1;});

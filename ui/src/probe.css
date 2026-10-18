@@ -1,4 +1,6 @@
 /* The probe badge reports the logical input, never a latched old contact. */
+.surface-plan.measuring .surface-settings,.surface-plan.measuring .surface-motion,.surface-plan.measuring .surface-description,.surface-summary button[hidden]{display:none}.operator:has(.surface-plan.measuring) .job-bounds,.operator:has(.surface-plan.measuring) .file-choice small,.operator:has(.surface-plan.measuring) .file-choice button{display:none}.operator:has(.surface-plan.measuring) .file-choice{padding:8px}.surface-plan.measuring .surface-plot{height:240px!important}@media(max-width:760px){.surface-plan.measuring .surface-plot{height:180px!important}}
+.surface-motion{font-size:12px;margin:6px 0}.surface-motion summary{cursor:pointer;padding:8px 0}.surface-use{display:flex;align-items:center;gap:9px;font-size:12px;margin:10px 0;line-height:1.5;color:var(--green)}.surface-use input{width:20px;min-height:20px;flex:none;accent-color:var(--accent)}.surface-points li{grid-template-columns:22px 1fr 1fr 1fr;font-size:11px}.surface-summary #surface-stop{margin-top:8px}.surface-motion fieldset{padding:0}
 .environment{flex-wrap:wrap;gap:12px}
 .environment .probe-indicator{display:flex;align-items:center;gap:6px;padding:8px 10px;border:2px solid #c5c3bc;border-radius:4px;min-height:42px}
 .environment .probe-indicator>span{font-size:10px;font-weight:700;margin:0;color:inherit}

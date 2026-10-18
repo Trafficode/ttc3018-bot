@@ -1,11 +1,11 @@
 import {useLayoutEffect, useRef, useState} from 'preact/hooks';
-import {IconChevronDown, IconChevronUp, IconPlayerPlay} from '@tabler/icons-preact';
-import {createSurfacePlan, defaultSurfaceSettings} from './surface-plan.js';
+import {IconChevronDown, IconChevronUp, IconPlayerPlay, IconPlayerStop} from '@tabler/icons-preact';
+import {createSurfacePlan, defaultSurfaceSettings, surfaceRequest, surfaceMatches} from './surface-plan.js';
 
 const number = value => Number(value).toLocaleString('pl-PL', {maximumFractionDigits: 3});
 
 // A data plot, not an illustration: every dot is derived from the loaded job.
-function PlanPlot({plan, bounds}) {
+function PlanPlot({plan, bounds, map}) {
   const ref = useRef();
   useLayoutEffect(() => {
     const canvas = ref.current;
@@ -66,7 +66,8 @@ function PlanPlot({plan, bounds}) {
       }
       plan.points.forEach(point => {
         ctx.beginPath(); ctx.arc(x(point.x), y(point.y), 4, 0, Math.PI * 2);
-        ctx.fillStyle = '#85898b'; ctx.fill();
+        const sample = map?.samples?.find(item => item.number === point.number);
+        ctx.fillStyle = sample ? '#167342' : map?.active && point.number === map.completed + 1 ? '#a96300' : '#85898b'; ctx.fill();
         // Dense grids retain dots; labels live in the accessible point list.
         if (plan.points.length <= 25) {
           ctx.fillStyle = '#28323c'; ctx.textAlign = 'center';
@@ -78,12 +79,12 @@ function PlanPlot({plan, bounds}) {
     observer.observe(canvas);
     draw();
     return () => observer.disconnect();
-  }, [plan, bounds]);
+  }, [plan, bounds, map]);
   return <canvas ref={ref} class="surface-plot" role="img"
     aria-label={`Plan ${plan.points.length} punktów. Oś X w prawo, Y w górę. Współrzędne względem zera materiału; lista punktów poniżej.`}/>;
 }
 
-export function SurfacePlan({job, settings, onChange, locked}) {
+export function SurfacePlan({job, settings, onChange, locked, canProbe, map, onStart, onStop, canStop, useMap, onUseMap}) {
   const [open, setOpen] = useState(true);
   const [editArea, setEditArea] = useState(false);
   const [custom, setCustom] = useState(false);
@@ -91,13 +92,16 @@ export function SurfacePlan({job, settings, onChange, locked}) {
   const current = settings || defaultSurfaceSettings(job.bounds_mm);
   const customSelected = custom || !([3, 5].includes(Number(current.columns)) && Number(current.columns) === Number(current.rows));
   const plan = createSurfacePlan(job.bounds_mm, current);
+  const params = surfaceRequest(job.bounds_mm, current);
+  const currentMap = surfaceMatches(map, job.id, current, job.bounds_mm) ? map : null;
+  const ready = currentMap?.valid === true;
   const choose = count => {onChange({...current, columns: count, rows: count}); setCustom(false);};
   function changeArea(axis, index, value) {
     const area = {...current.area, [axis]: [...current.area[axis]]};
     area[axis][index] = value;
     onChange({...current, area});
   }
-  return <section class="surface-plan" aria-labelledby="surface-heading">
+  return <section class={`surface-plan ${currentMap?.active ? 'measuring' : ''}`} aria-labelledby="surface-heading">
     <div class="surface-heading"><button type="button" class="surface-toggle" aria-expanded={open} aria-controls="surface-body" onClick={() => setOpen(!open)}><h3 id="surface-heading">Pomiar powierzchni</h3>{open ? <IconChevronUp size={18}/> : <IconChevronDown size={18}/>}</button>{open && <button type="button" class="text-button" aria-expanded={editArea} onClick={() => setEditArea(!editArea)}>Zmień obszar</button>}</div>
     {open && <div id="surface-body">
       <p class="surface-description">Plan punktów w obszarze obróbki z pliku.</p>
@@ -109,9 +113,13 @@ export function SurfacePlan({job, settings, onChange, locked}) {
         {customSelected && <div class="surface-custom">{[['columns', 'Punkty X'], ['rows', 'Punkty Y']].map(([key, label]) => <label>{label}<input type="number" min="2" max="11" step="1" value={current[key]} onInput={event => onChange({...current, [key]: event.currentTarget.value})}/></label>)}</div>}
         {editArea && <div class="surface-area">{['X','Y'].map(axis => <div><label>{axis} min · mm<input type="number" step="0.1" value={current.area[axis][0]} onInput={event => changeArea(axis, 0, event.currentTarget.value)}/></label><label>{axis} max · mm<input type="number" step="0.1" value={current.area[axis][1]} onInput={event => changeArea(axis, 1, event.currentTarget.value)}/></label></div>)}<button type="button" class="text-button" onClick={() => onChange({...current, area: defaultSurfaceSettings(job.bounds_mm).area})}>Przywróć zakres z pliku</button></div>}
       </fieldset>
-      {plan.error ? <p class="surface-validation" role="status">{plan.error}</p> : <div class="surface-preview"><PlanPlot plan={plan} bounds={job.bounds_mm}/><div class="surface-summary"><ul class="surface-legend"><li><span class="extent-key"/>Obszar obróbki</li><li><span class="point-key"/>Punkty pomiaru — oczekują</li></ul><strong id="surface-count">{plan.points.length} punktów · plan</strong><p class="surface-spacing"><span>Rozstaw X: {number(plan.spacingX)} mm</span><span>Rozstaw Y: {number(plan.spacingY)} mm</span></p><button id="surface-start" type="button" class="primary" disabled aria-describedby="surface-unavailable"><IconPlayerPlay size={18}/>Rozpocznij pomiar</button><p id="surface-unavailable">Sondowanie Z nie jest jeszcze dostępne.</p></div></div>}
-      <p class="surface-note">Współrzędne G54 względem zera materiału (0,0). Przed pomiarem sprawdź miedź i uchwyty. Wrzeciono musi być wyłączone.</p>
-      {!plan.error && <details class="surface-points"><summary>Lista punktów · X / Y</summary><ol>{plan.points.map(point => <li key={point.number}><span>{point.number}</span><span>X {number(point.x)} mm</span><span>Y {number(point.y)} mm</span></li>)}</ol></details>}
+      <details class="surface-motion"><summary>Parametry pomiaru i prześwitu</summary><fieldset disabled={locked}><div class="surface-custom">{[['distance','Pierwszy zjazd · mm',0.1,5,0.1,1],['clearance','Prześwit Z · mm',1,3,0.1,2],['below','Zakres pod zerem · mm',0.1,2,0.1,1],['feed','Posuw sondy · mm/min',10,60,1,20]].map(([key,label,min,max,step,fallback]) => <label>{label}<input type="number" min={min} max={max} step={step} value={current[key] ?? fallback} onInput={event => onChange({...current,[key]:event.currentTarget.value})}/></label>)}</div></fieldset></details>
+      {plan.error ? <p class="surface-validation" role="status">{plan.error}</p> : <div class="surface-preview"><PlanPlot plan={plan} bounds={job.bounds_mm} map={currentMap}/><div class="surface-summary"><ul class="surface-legend"><li><span class="extent-key"/>Obszar obróbki</li><li><span class="point-key"/>Zielone: zmierzone · szare: oczekują</li></ul><strong id="surface-count">{currentMap ? `${currentMap.completed} / ${plan.points.length} · ${ready ? 'mapa gotowa' : currentMap.active ? 'pomiar' : 'nieaktualna'}` : `${plan.points.length} punktów · plan`}</strong><p class="surface-spacing"><span>Rozstaw X: {number(plan.spacingX)} mm</span><span>Rozstaw Y: {number(plan.spacingY)} mm</span></p><button hidden={currentMap?.active} id="surface-start" type="button" class="primary" disabled={locked || !canProbe || !!params.error} onClick={() => onStart(params)}><IconPlayerPlay size={18}/>{ready ? 'Powtórz pomiar' : 'Rozpocznij pomiar'}</button>{currentMap?.active && <button id="surface-stop" type="button" class="stop" disabled={!canStop} onClick={onStop}><IconPlayerStop size={18}/>Przerwij pomiar</button>}<p id="surface-readiness">{ready ? 'Mapa gotowa. Zdejmij krokodylek z frezu przed frezowaniem.' : currentMap?.active ? 'Pomiar trwa. Stop przerywa całą siatkę.' : !canProbe ? 'Połącz CNC, sprawdź STYK przy zwarciu, potem rozewrzyj sondę.' : 'Pomiar uruchamia ruch osi po potwierdzeniu.'}</p></div></div>}
+      {!plan.error && params.error && <p class="surface-validation">{params.error}</p>}
+      {ready && <label class="surface-use"><input id="surface-use" type="checkbox" checked={useMap} disabled={locked} onChange={event => onUseMap(event.currentTarget.checked)}/>Używaj tej mapy do kompensacji Z przy starcie pliku</label>}
+      {currentMap && !currentMap.valid && !currentMap.active && <p class="surface-note">Mapa nieaktualna lub pomiar przerwany — wykonaj pełny pomiar ponownie.</p>}
+      <p class="surface-note">Ustaw frez blisko nad miedzią. Najpierw pomiar referencyjny i zero Z, potem siatka. Wrzeciono wyłączone; sprawdź miedź, uchwyty i prześwit. Po zmianie narzędzia, mocowania lub zera powtórz pomiar.</p>
+      {!plan.error && <details class="surface-points"><summary>Lista punktów · X / Y</summary><ol>{plan.points.map(point => <li key={point.number}><span>{point.number}</span><span>X {number(point.x)} mm</span><span>Y {number(point.y)} mm</span><span>Z {currentMap?.samples?.find(item => item.number === point.number) ? number(currentMap.samples.find(item => item.number === point.number).z) + ' mm' : '—'}</span></li>)}</ol></details>}
     </div>}
   </section>;
 }
