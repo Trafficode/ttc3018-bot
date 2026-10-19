@@ -60,6 +60,13 @@ the scrolling content. Ready-to-mill primary controls fit without scrolling at
 Mobile has horizontal tool navigation and an initially collapsed camera. Full
 camera frames are contained instead of cropped; letterboxing can appear.
 
+Camera Maximize opens even from the collapsed state. On phones it allocates half
+the viewport height to the camera panel; on desktop it also widens the preview
+column to half the viewport width. Minimize restores the normal preview size;
+Collapse closes it. These are local display actions and send no CNC commands.
+The image keeps its original aspect ratio, so portrait layouts can letterbox.
+Execution controls and topbar Stop remain outside the resized camera panel.
+
 Shared compact controls distinguish hover, pressed, selected, focus and disabled
 states. Selected controls keep their selection on hover. Disabled Start/Pause
 have explanatory titles; field validity and connection status remain visible.

@@ -1,4 +1,7 @@
 /* Compact task-first operator layout. Imported after the shared controls. */
+.compact .camera-panel.expanded{height:max(50dvh,360px)}
+@media(min-width:761px){.compact .workspace:has(.camera-panel.expanded){grid-template-columns:124px minmax(0,1fr) minmax(0,50vw)}}
+@media(max-width:760px){.compact .machine-preview:has(.camera-panel.expanded){max-height:none;overflow:visible}.compact .machine-preview .camera-panel.expanded{height:50dvh}}
 .compact{padding:12px;gap:10px;max-width:none;height:100dvh;min-height:580px}
 .compact button{min-height:32px;padding:6px 10px;font-size:12px;gap:6px;transition:background-color .12s,border-color .12s,box-shadow .12s}
 .compact button svg{width:17px;height:17px;flex-shrink:0}
