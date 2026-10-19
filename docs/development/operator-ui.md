@@ -67,6 +67,12 @@ Collapse closes it. These are local display actions and send no CNC commands.
 The image keeps its original aspect ratio, so portrait layouts can letterbox.
 Execution controls and topbar Stop remain outside the resized camera panel.
 
+The measured file map has one preview under the camera. On phones it opens from
+the Map Z disclosure in that same location. The Compensation Z row only selects
+compensation and summarizes the result; it does not create a second map preview.
+Map axis titles, coordinate ticks and measured-height labels have separate canvas
+lanes so label backgrounds do not erase axes or their numbers.
+
 Shared compact controls distinguish hover, pressed, selected, focus and disabled
 states. Selected controls keep their selection on hover. Disabled Start/Pause
 have explanatory titles; field validity and connection status remain visible.

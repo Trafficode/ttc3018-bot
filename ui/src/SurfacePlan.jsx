@@ -20,7 +20,13 @@ function PlanPlot({plan, bounds, map}) {
       canvas.height = height * ratio;
       const ctx = canvas.getContext('2d');
       ctx.scale(ratio, ratio);
-      const left = 46, top = 32, bottom = height - 51, right = width - 30;
+      ctx.font = '12px system-ui';
+      const yLabels = [plan.area.Y[0], (plan.area.Y[0] + plan.area.Y[1]) / 2, plan.area.Y[1]];
+      const labelWidth = Math.max(...yLabels.map(value => ctx.measureText(number(value)).width));
+      // Reserve separate lanes for Y ticks, the axis, and point heights.
+      // Point-label backgrounds must never erase an axis or its text.
+      const left = Math.max(92, labelWidth + 56), top = 52;
+      const bottom = height - 74, right = width - 38;
       const xSpan = plan.area.X[1] - plan.area.X[0];
       const ySpan = plan.area.Y[1] - plan.area.Y[0];
       const scaleX = (right - left) / xSpan, scaleY = (bottom - top) / ySpan;
@@ -46,8 +52,8 @@ function PlanPlot({plan, bounds, map}) {
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.strokeStyle = '#49515a';
-      const baseX = originX - 13, baseY = originY + 13;
-      const tipX = originX + plotWidth + 12, tipY = originY - plotHeight - 12;
+      const baseX = originX - 38, baseY = originY + 18;
+      const tipX = originX + plotWidth + 12, tipY = originY - plotHeight - 14;
       ctx.beginPath();
       ctx.moveTo(baseX, tipY); ctx.lineTo(baseX, baseY); ctx.lineTo(tipX, baseY);
       ctx.moveTo(baseX - 4, tipY + 7); ctx.lineTo(baseX, tipY); ctx.lineTo(baseX + 4, tipY + 7);
@@ -55,18 +61,18 @@ function PlanPlot({plan, bounds, map}) {
       ctx.stroke();
       ctx.fillStyle = '#28323c';
       ctx.textAlign = 'left';
-      ctx.fillText('+Y [mm]', Math.max(4, baseX - 4), tipY - 10);
+      ctx.fillText('+Y [mm]', 8, 20);
       ctx.textAlign = 'right';
-      ctx.fillText('+X [mm]', width - 2, baseY + 32);
-      ctx.fillText('ΔZ [mm] · zero: 0,0', width - 2, 11);
+      ctx.fillText('+X [mm]', width - 4, height - 6);
+      ctx.fillText('ΔZ [mm] · zero: 0,0', width - 4, 20);
       ctx.fillStyle = '#69717a';
       for (const fraction of [0, 0.5, 1]) {
         const tickX = plan.area.X[0] + fraction * xSpan;
         const tickY = plan.area.Y[0] + fraction * ySpan;
         ctx.textAlign = 'center';
-        ctx.fillText(number(tickX), x(tickX), baseY + 17);
+        ctx.fillText(number(tickX), x(tickX), baseY + 20);
         ctx.textAlign = 'right';
-        ctx.fillText(number(tickY), baseX - 5, y(tickY) + 4);
+        ctx.fillText(number(tickY), baseX - 8, y(tickY) + 4);
       }
       plan.points.forEach(point => {
         ctx.beginPath(); ctx.arc(x(point.x), y(point.y), 4, 0, Math.PI * 2);
@@ -88,8 +94,14 @@ function PlanPlot({plan, bounds, map}) {
     return () => observer.disconnect();
   }, [plan, bounds, map]);
   return <div class="surface-plot-scroll" tabIndex="0" aria-label="Mapa pomiarów; większą siatkę można przewijać"><canvas ref={ref} class="surface-plot" role="img"
-    style={{minWidth:Math.max(280, (plan.columns - 1) * 55 + 95), '--surface-height':`${Math.max(180, (plan.rows - 1) * 55 + 70)}px`}}
+    style={{minWidth:Math.max(320, (plan.columns - 1) * 55 + 150), '--surface-height':`${Math.max(230, (plan.rows - 1) * 55 + 126)}px`}}
     aria-label={`Plan ${plan.points.length} punktów. Oś X w prawo, Y w górę. Wartości ΔZ w mm względem X=0, Y=0; dokładne wyniki w liście punktów poniżej.`}/></div>;
+}
+
+export function SurfacePreview({job, map}) {
+  const [open, setOpen] = useState(false);
+  const available = !!map?.samples?.length;
+  return <section class={`desktop-map ${open ? 'open' : ''} ${available ? '' : 'empty'}`} aria-label="Mapa Z pod kamerą"><button type="button" class="map-toggle" aria-expanded={open} aria-controls="camera-map-body" onClick={() => setOpen(!open)}>Mapa Z · {map?.completed} / {map?.total}{open ? <IconChevronUp size={16}/> : <IconChevronDown size={16}/>}</button><div id="camera-map-body" class="preview-map-body"><SurfaceOverview job={job} map={map}/></div></section>;
 }
 
 export function SurfaceOverview({job, map}) {
