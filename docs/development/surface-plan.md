@@ -1,6 +1,6 @@
 # PCB surface measurement and compensation
 
-The File tab builds a grid from the uploaded program's X/Y bounds in G54 work
+The File tab's Preparation view builds a grid from uploaded X/Y bounds in G54 work
 coordinates. Positive X points right and positive Y points up. The diagram is a
 machining rectangle, not a detected PCB (printed circuit board) edge. It cannot
 locate copper or clamps. Confirm those physically before starting.
@@ -10,7 +10,7 @@ locate copper or clamps. Confirm those physically before starting.
 1. Connect CNC, establish material X/Y zero and verify the probe input as
    described in [single-point Z probing](z-probe.md). Keep the spindle off and
    connect the tool clip and exposed copper.
-2. Upload the program. Choose 3 x 3, 5 x 5 or a custom grid (2 to 11 per axis).
+2. Upload the program and open Preparation. Choose 3 x 3, 5 x 5 or a custom grid (2 to 11 per axis).
    Area editing can extend, but cannot omit, a programmed region.
 3. Position the tool close above copper at the current X/Y. Start measurement
    and confirm. The first touch is a reference at that current point, followed
@@ -20,8 +20,8 @@ locate copper or clamps. Confirm those physically before starting.
    zero (rounded to 0.001 mm); gray points are pending. Min/max and total height
    difference summarize the measured area. Dense grids can be scrolled.
    Stop aborts the whole scan; it cannot resume a partial map.
-5. When the map is complete, remove the tool clip before starting the spindle.
-   The compensation checkbox is enabled and selected for the matching plan.
+5. When the map is complete, the panel returns to Milling. Remove the tool clip
+   before starting the spindle. Compensation is selected for the matching plan.
    Program Start still requires a separate confirmation and states whether
    compensation will be used.
 

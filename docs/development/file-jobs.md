@@ -30,6 +30,30 @@ The operator checks clamps, backing, zero and safe clearance before Start.
 
 ## Sender
 
+### Per-job XY feed
+
+The Milling view offers original file feeds or an explicit XY feed of 1–300
+mm/min, with numeric input, slider and 50/75/100/150 presets. Start confirmation
+states the selected value. Changing inputs never sends serial commands. A new
+upload resets this choice to the original file. The selection is fixed at Start;
+it is not a live controller override.
+
+`job_start.xy_feed` is optional. The RPi validates it and prepares a separate
+execution copy. It changes level G1 moves with actual XY displacement, preserving
+Z-only moves, original ramps, G0, spindle settings and coordinates. Original
+modal F values are tracked separately and restored explicitly on other G1 moves.
+This avoids a horizontal override accidentally speeding up a later plunge.
+Feed selection runs before height compensation, so Z changes introduced by the
+surface map keep the chosen horizontal feed. Both transformations pass the normal
+program validator and retain original source-line numbers. The upload stays
+unchanged. Job status reports `xy_feed`, `compensated` and original `z_feeds`;
+an adjusted feed alone does not imply surface compensation.
+
+If the program intentionally uses several horizontal feeds, an explicit value
+replaces them all on level XY G1 moves. Choose original mode to preserve them.
+
+### Serial execution
+
 The existing CNC worker is the only serial reader. It sends one line and waits
 for matching `ok`; push status messages do not consume ACKs. Fragmented replies
 are accumulated. Progress counts accepted commands. Completion additionally

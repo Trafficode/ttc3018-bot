@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # compensation.py
-# 2026-10-18
+# 2026-10-19
 # - Bilinear PCB height compensation of validated absolute linear programs.
 # ---------------------------------------------------------------------------
 """Build a separate validated execution stream; never mutate an upload."""
@@ -125,6 +125,8 @@ def compensate_program(program, surface):
             raise ValueError("Nieobsługiwany ruch kompensacji.")
         position = target
     result = parse_program(program["name"], "\n".join(lines))
+    result["compensated"] = True
+    result["xy_feed"] = program.get("xy_feed")
     for line in result["lines"]:
         line["source_line"] = sources[line["source_line"] - 1]
     return result

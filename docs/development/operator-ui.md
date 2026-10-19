@@ -51,11 +51,24 @@ override the running program.
 
 ## Responsive layout and validation
 
-Desktop uses one viewport with a grouped topbar and camera/operator columns.
-Secondary tool content can scroll within its panel when space is limited.
-Mobile uses a compact header, collapsible camera, scrollable tool content and
-visible job actions. Full camera frames are contained instead of cropped, so
-letterboxing can appear. The real camera and its field of view are preserved.
+Desktop uses a compact status bar, left tool navigation, central task workspace
+and right camera/map preview. File opens with separate Preparation and Milling
+views. Measurement configuration stays in Preparation. Milling shows feed,
+compensation and expandable bounds/settings. The execution toolbar stays outside
+the scrolling content. Ready-to-mill primary controls fit without scrolling at
+1440x900, 390x844 and 360x740. Expanded maps/settings can scroll independently.
+Mobile has horizontal tool navigation and an initially collapsed camera. Full
+camera frames are contained instead of cropped; letterboxing can appear.
+
+Shared compact controls distinguish hover, pressed, selected, focus and disabled
+states. Selected controls keep their selection on hover. Disabled Start/Pause
+have explanatory titles; field validity and connection status remain visible.
+Topbar Stop remains visible on every tool during an active job or probe.
+
+The File feed selector defaults to the original program after every upload.
+Presets, slider and numeric input edit the next start only; no CNC command is
+sent by changing a value. Inputs lock during work and confirmation. See
+[file jobs](file-jobs.md) for the server-side transformation and limits.
 
 Browser acceptance used a local simulated API with production CSP. It checked
 desktop 1440x900 and mobile 390x844, keyboard cancellation, explicit commands,

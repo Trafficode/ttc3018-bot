@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # jobs.py
-# 2026-10-18
-# - Validated original/compensated GRBL streams and one asynchronous sender.
+# 2026-10-19
+# - Validated original/adjusted GRBL streams and one asynchronous sender.
 # ---------------------------------------------------------------------------
 """Upload never touches USB; only explicit operator start/resume runs code."""
 
@@ -41,6 +41,7 @@ def parse_program(name, content):
     first_move = True
     max_feed = 0
     max_power = 0
+    z_feeds = set()
     for number, raw in enumerate(content.splitlines(), 1):
         if not raw.isascii() or any(
             ord(char) < 32 and char != "\t" for char in raw
@@ -119,6 +120,10 @@ def parse_program(name, content):
                 raise ValueError("Przed ruchem wymagane G21 G90 G94 G54.")
             if motion == 1 and feed is None:
                 raise ValueError("G1 wymaga określonego posuwu F.")
+            if motion == 1 and "Z" in axes and not any(
+                axis in axes for axis in ("X", "Y")
+            ):
+                z_feeds.add(feed)
             if first_move:
                 if axes != ["Z"] or values["Z"] <= 0 or motion != 0:
                     raise ValueError("Pierwszy ruch: G0 Z>0, bez X/Y.")
@@ -156,7 +161,8 @@ def parse_program(name, content):
         if low is not None and (low < -maximum or high > maximum):
             raise ValueError(f"Zakres {axis} przekracza limit ±{maximum} mm.")
     return {"name": name, "lines": lines, "bounds_mm": bounds,
-            "max_feed": max_feed, "max_power": max_power}
+            "max_feed": max_feed, "max_power": max_power,
+            "z_feeds": sorted(z_feeds)}
 
 
 class JobRunner:
@@ -280,7 +286,10 @@ class JobRunner:
                 "bounds_mm": program["bounds_mm"] if program else None,
                 "max_feed": program["max_feed"] if program else None,
                 "max_power": program["max_power"] if program else None,
-                "compensated": self.execution is not None,
+                "compensated": bool(program and program.get("compensated")),
+                "xy_feed": program.get("xy_feed") if program else None,
+                "z_feeds": self.program.get("z_feeds", [])
+                if self.program else [],
             }
 
     def abort(self, controller, reason, state="failed"):

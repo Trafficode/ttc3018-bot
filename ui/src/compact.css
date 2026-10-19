@@ -1,0 +1,239 @@
+/* Compact task-first operator layout. Imported after the shared controls. */
+.compact{padding:12px;gap:10px;max-width:none;height:100dvh;min-height:580px}
+.compact button{min-height:32px;padding:6px 10px;font-size:12px;gap:6px;transition:background-color .12s,border-color .12s,box-shadow .12s}
+.compact button svg{width:17px;height:17px;flex-shrink:0}
+.compact button:hover:not(:disabled){background:#e8e4da;border-color:#918b7e;box-shadow:inset 0 0 0 1px #918b7e}
+.compact button:active:not(:disabled){background:#ddd6c8;box-shadow:inset 0 1px 3px #20273130}
+.compact button.primary:hover:not(:disabled){background:#875000;border-color:#875000;color:white}
+.compact button.stop:hover:not(:disabled){background:#f8d9d5;border-color:var(--red);color:var(--red)}
+.compact button[aria-pressed=true],.compact button[aria-selected=true]{background:var(--selected);border-color:var(--accent);color:#824900}
+.compact button[aria-pressed=true]:hover:not(:disabled),.compact button[aria-selected=true]:hover:not(:disabled){background:#efd6a6;border-color:var(--accent)}
+.compact button:disabled{cursor:not-allowed;opacity:.75;box-shadow:none}
+.compact input{min-height:32px;padding:5px 7px;font-size:13px}
+.compact input:enabled:hover{border-color:#918b7e}
+.compact input[type=checkbox]{width:17px;height:17px;min-height:17px;padding:0;margin:0;accent-color:var(--accent);flex:none;cursor:pointer}
+.compact input[type=range]{min-height:30px;padding:0}
+.compact input[type=range]::-webkit-slider-runnable-track{height:5px}
+.compact input[type=range]::-webkit-slider-thumb{width:17px;height:17px;margin-top:-7px}
+.compact h2,.compact h3{font-size:15px;letter-spacing:0;margin:0}
+.compact .topbar{padding:0;gap:0;display:grid;grid-template-columns:minmax(240px,1fr) auto auto auto;align-items:center;flex:none}
+.compact .brand{display:flex;align-items:center;gap:12px;padding:8px 12px;min-width:0}
+.compact .brand>div{margin:0;gap:7px}
+.compact h1{font-size:19px;letter-spacing:-.6px;white-space:nowrap}
+.compact .brand>div>span{display:none}
+.compact .connection{padding:0;background:transparent;font-size:11px;gap:5px;white-space:nowrap}
+.compact .connection svg{width:15px;height:15px}
+.compact .positions{padding:0 12px;border-left:1px solid var(--border);grid-column:auto;grid-row:auto}
+.compact .positions>p{display:none}
+.compact .axes{gap:12px}
+.compact .axes>div{gap:5px;justify-content:start;flex:none}
+.compact .axes>div+div{padding-left:12px}
+.compact .axes strong,.compact .axes output{font-size:15px;line-height:24px}
+.compact .axes small{font-size:9px;display:inline}
+.compact .environment{display:flex;align-items:center;gap:10px;padding:0 12px;max-width:none;grid-column:auto;grid-row:auto;border-left:1px solid var(--border);flex-wrap:nowrap}
+.compact .environment>div{display:flex;align-items:center;gap:4px}
+.compact .environment>div>span{display:none}
+.compact .environment strong{font-size:11px;gap:3px}
+.compact .environment svg{width:16px;height:16px}
+.compact .environment .probe-indicator{order:-1;width:auto;min-height:26px;padding:3px 5px;border-width:1px;gap:4px}
+.compact .environment .probe-indicator>span{display:inline;font-size:9px;margin:0;font-weight:600}
+.compact .environment .probe-indicator strong{font-size:10px;letter-spacing:0}
+.compact .header-actions{display:flex;gap:6px;padding:6px 10px}
+.compact .connect{min-width:0;grid-column:auto;grid-row:auto}
+.compact .header-actions .connect{font-size:11px;padding:5px 7px}
+.compact .header-actions .stop{min-width:70px}
+.compact .station-notice{grid-column:1/-1;grid-row:auto;border:0;border-top:1px solid var(--border);border-radius:0;padding:4px 12px;min-height:28px;gap:7px}
+.compact .station-notice>svg{width:15px;height:15px}
+.compact .station-notice>p{font-size:11px;font-weight:500;line-height:1.35}
+.compact .station-notice .text-button{min-height:22px;padding:1px 4px;font-size:10px}
+.compact .station-details{grid-column:1/-1;padding:8px 12px;font-size:11px;max-height:110px}
+.compact .workspace{display:grid;grid-template-columns:124px minmax(0,1fr) minmax(280px,.43fr);grid-template-rows:minmax(0,1fr) auto;gap:0;border:1px solid var(--border);border-radius:4px;background:var(--surface);overflow:hidden}
+.compact .tabs{grid-column:1;grid-row:1/3;display:flex;flex-direction:column;margin:0;padding:7px 0;border-right:1px solid var(--border)}
+.compact .tabs button{flex:none;justify-content:flex-start;min-height:42px;padding:9px 12px;border:0;border-left:2px solid transparent;border-radius:0;background:transparent;font-size:12px;gap:8px}
+.compact .tabs button[aria-selected=true]{background:#fff0d8;border-left-color:var(--accent);color:#945100}
+.compact .operator{grid-column:2;grid-row:1;display:flex;padding:16px 18px;border:0;border-radius:0;min-width:0;min-height:0}
+.compact .tool-scroll{padding:0;scroll-padding-bottom:12px;overflow:auto}
+.compact .tool-scroll h2{margin-bottom:18px}
+.compact .file-choice{padding:0 0 14px;margin:0 0 14px;border-bottom:1px solid var(--border);border-radius:0;background:transparent;gap:10px}
+.compact .file-name strong{font-size:13px;line-height:1.4}
+.compact .file-name small{font-size:10px;margin-top:4px}
+.compact .file-choice button{min-height:32px;font-size:11px;padding:5px 8px}
+.compact .job-phases{display:flex;gap:7px;margin-bottom:20px}
+.compact .job-phases button{flex:1;justify-content:flex-start;border:1px solid var(--border);background:#eeede8;font-size:12px;min-height:34px;padding:7px 12px}
+.compact .job-phases button[aria-pressed=true]{border-color:var(--accent);background:#fff0d8;color:#945100}
+.compact .cut-settings h2{font-size:14px;margin:0 0 18px}
+.compact .file-feed{display:grid;grid-template-columns:94px auto minmax(60px,1fr) auto;gap:10px;align-items:center;padding:0 0 20px}
+.compact .file-feed>label:first-child{font-size:12px;color:inherit}
+.compact .feed-number{display:flex;align-items:center;gap:7px}
+.compact .feed-number input{width:67px;font-variant-numeric:tabular-nums}
+.compact .feed-number span{font-size:10px;color:var(--muted);white-space:nowrap}
+.compact .feed-presets{display:flex;gap:3px}
+.compact .feed-presets button{min-width:34px;padding:5px 7px;min-height:30px}
+.compact .file-feed>.inline-check{grid-column:2/-1;justify-self:end}
+.compact .inline-check{display:flex;align-items:center;gap:7px;color:inherit;font-size:12px;white-space:nowrap}
+.compact .setting-row{display:flex;align-items:center;gap:12px;border-top:1px solid var(--border);padding:19px 0;font-size:12px;flex-wrap:wrap}
+.compact .setting-row>span:first-child{min-width:98px}
+.compact .setting-row strong{font-size:12px}
+.compact .setting-row small{font-size:11px;color:var(--muted)}
+.compact .map-summary .text-button{margin-left:auto;text-decoration:none;font-size:11px;min-height:26px;padding:3px}
+.compact .job-extent{gap:6px 12px}
+.compact .job-extent>span{width:100%;font:11px/1.6 ui-monospace,Consolas,monospace;color:var(--muted)}
+.compact details.job-extent{border-top:1px solid var(--border);font-size:12px}
+.compact details.job-extent summary{display:flex;align-items:center;gap:10px;padding:16px 0;cursor:pointer;list-style:none}
+.compact details.job-extent small{font-size:11px;color:var(--muted)}
+.compact details.job-extent svg{margin-left:auto}
+.compact details.job-extent>div{font:11px/1.6 ui-monospace,monospace;color:var(--muted);padding:0 0 14px}
+.compact .field-error{font-size:12px;color:var(--red);margin-bottom:10px}
+.compact .parameters{margin:0;border:0;border-top:1px solid var(--border);border-radius:0}
+.compact .parameters summary{padding:14px 0;font-size:12px;min-height:32px}
+.compact summary:hover{color:#824900;background:#f0ede5}
+.compact .parameters>div{padding:0 0 10px}
+.compact .parameters p{font-size:11px}
+.compact .machine-preview{grid-column:3;grid-row:1;display:flex;flex-direction:column;border-left:1px solid var(--border);min-width:0;min-height:0;overflow:auto}
+.compact .camera-panel{flex:none;height:260px;padding:10px;border:0;border-bottom:1px solid var(--border);border-radius:0;gap:8px;min-height:0}
+.compact .camera-panel .panel-heading h2{font-size:14px}
+.compact .camera-actions>button:first-child{position:static;background:transparent;color:inherit;border-color:var(--border)}
+.compact .camera-actions button{min-height:26px;padding:3px 5px}
+.compact .collapse-camera{display:inline-flex}
+.compact .camera-panel.collapsed{height:auto}
+.compact .camera-meta{font-size:9px}
+.compact .camera-meta a{font-size:10px}
+.compact .desktop-map{padding:12px 10px;flex:1;min-height:0}
+.compact .desktop-map .surface-overview .surface-plot{height:max(var(--surface-height),280px)!important}
+.compact .surface-overview h3{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:10px}
+.compact .surface-overview small{font-size:10px;color:var(--muted);font-weight:400}
+.compact .surface-overview .surface-plot{height:var(--surface-height)!important;width:100%;display:block}
+.compact .surface-overview p,.compact .map-empty{font-size:10px;color:var(--muted);line-height:1.5;margin:6px 0}
+.compact .inline-map{border-top:1px solid var(--border);padding:10px 0}
+.compact .job-actions{position:static;grid-column:2/4;grid-row:2;display:flex;align-items:center;gap:20px;padding:12px 16px;border-top:1px solid var(--border);margin:0;z-index:2}
+.compact .job-progress{flex:1;min-width:0}
+.compact .progress-label{font-size:11px;margin-bottom:5px}
+.compact progress{height:7px}
+.compact .job-progress>small{display:block;margin-top:4px;font-size:10px;color:var(--muted)}
+.compact .execution-buttons{display:flex;gap:8px;flex:none}
+.compact .execution-buttons button{min-height:40px;min-width:92px;font-size:12px}
+.compact .execution-buttons .primary{min-width:170px}
+.compact .safety{border:0;background:transparent;padding:0 4px;font-size:10px;gap:6px;min-height:16px}
+.compact .safety svg{width:13px;height:13px}
+.compact .surface-plan{padding:0!important;border:0;margin-bottom:0}
+.compact .surface-description{font-size:11px}
+.compact .surface-preview{grid-template-columns:minmax(0,1fr) minmax(160px,.7fr)}
+.compact .surface-plan .surface-grid button{min-height:30px;font-size:12px}
+.compact .surface-plan .surface-toggle{min-height:32px}
+.compact .surface-toggle h3{font-size:14px}
+.compact .surface-summary button{min-height:32px;font-size:11px}
+.compact .surface-motion summary,.compact .surface-points summary{min-height:30px;padding:6px 0;font-size:11px}
+.compact .surface-note{font-size:10px}
+.compact .surface-use{margin:8px 0;font-size:11px}
+.compact .step-options span{min-height:32px;padding:7px 5px;cursor:pointer}
+.compact .step-options input:enabled+span:hover{background:#eee5d5;border-color:#918b7e}
+.compact .step-options input:disabled+span{opacity:.5;cursor:not-allowed;background:#e6e5e1}
+.compact .xy-pad{grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,40px);gap:6px}
+.compact .z-pad button{min-height:42px}
+.compact .hint{font-size:11px;margin-top:10px}
+.compact .zero-probe{margin-top:18px;padding-top:14px;font-size:12px}
+.compact .zero-probe h3{font-size:15px}
+.compact .button-row{margin-top:16px}
+.compact .empty-file{font-size:13px;color:var(--muted);padding:12px 0;max-width:500px}
+@media(max-width:1250px) and (min-width:761px){
+ .compact .topbar{grid-template-columns:minmax(200px,1fr) auto auto}
+ .compact .brand{gap:7px;flex-wrap:wrap;padding:6px 10px}
+ .compact .environment{grid-row:2;grid-column:1/3;border:0;justify-content:flex-start;padding:3px 10px}
+ .compact .header-actions{grid-column:3;grid-row:1/3}
+ .compact .station-notice{grid-row:3}
+ .compact .workspace{grid-template-columns:102px minmax(0,1fr) 270px}
+ .compact .operator{padding:12px}
+ .compact .file-feed{grid-template-columns:80px auto minmax(60px,1fr)}
+ .compact .feed-presets{grid-column:2/3}
+ .compact .file-feed>.inline-check{grid-column:3;grid-row:2}
+ .compact .surface-preview{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:760px){
+ .compact{padding:8px;gap:7px;min-height:540px}
+ .compact button{min-height:36px;padding:6px 8px;font-size:12px}
+ .compact input{min-height:36px;font-size:14px}
+ .compact .topbar{grid-template-columns:minmax(0,1fr) auto}
+ .compact .brand{display:block;padding:7px 9px}
+ .compact h1{font-size:17px}
+ .compact .connection{font-size:10px;margin-top:3px}
+ .compact .header-actions{grid-column:2;grid-row:1;padding:5px 7px;gap:5px}
+ .compact .header-actions .connect{font-size:0;min-height:32px;width:30px;padding:4px}
+ .compact .header-actions .connect span{display:none}
+ .compact .header-actions .stop{min-width:60px;min-height:32px;font-size:11px}
+ .compact .positions{grid-column:1/-1;grid-row:2;padding:3px 9px 5px;border:0}
+ .compact .axes{justify-content:space-between;gap:5px}
+ .compact .axes>div{flex:1;justify-content:center;gap:5px}
+ .compact .axes>div+div{padding-left:6px}
+ .compact .axes strong,.compact .axes output{font-size:14px;line-height:20px}
+ .compact .axes small{display:none}
+ .compact .axes>div:last-child small{display:inline}
+ .compact .environment{grid-column:1/-1;grid-row:3;padding:3px 9px;justify-content:space-between;border:0;border-top:1px solid var(--border);gap:8px}
+ .compact .environment strong{font-size:10px}
+ .compact .environment .probe-indicator{padding:2px 4px;min-height:24px}
+ .compact .environment .probe-indicator svg{width:15px;height:15px}
+ .compact .environment .probe-indicator strong{font-size:10px}
+ .compact .station-notice{grid-row:4;padding:4px 8px;min-height:26px}
+ .compact .station-notice>p{font-size:10px;line-height:1.3}
+ .compact .station-details{font-size:10px;max-height:90px}
+ .compact .workspace{display:flex;flex-direction:column;gap:0;min-height:0}
+ .compact .tabs{order:0;flex-direction:row;padding:0;border:0;border-bottom:1px solid var(--border);flex:none}
+ .compact .tabs button{flex:1;justify-content:center;min-height:36px;font-size:11px;padding:7px 3px;gap:4px;border-left:0;border-bottom:2px solid transparent}
+ .compact .tabs button[aria-selected=true]{border-bottom-color:var(--accent)}
+ .compact .operator{order:1;flex:1;padding:10px;min-height:0}
+ .compact .machine-preview{order:2;flex:none;border:0;border-top:1px solid var(--border);max-height:180px;overflow:auto}
+ .compact .camera-panel{height:160px;padding:5px 10px;gap:5px}
+ .compact .camera-panel .panel-heading h2{font-size:12px}
+ .compact .camera-actions button{min-height:26px}
+ .compact .camera-panel.collapsed{height:36px}
+ .compact .desktop-map{display:none}
+ .compact .file-choice{padding-bottom:8px;margin-bottom:8px;gap:7px}
+ .compact .file-name strong{font-size:11px}
+ .compact .file-name small{font-size:9px;margin-top:3px}
+ .compact .file-choice>svg{width:19px;flex:none}
+ .compact .file-choice button{font-size:10px;min-height:32px;padding:5px;gap:4px}
+ .compact .file-choice button svg{width:15px}
+ .compact .job-phases{gap:5px;margin-bottom:10px}
+ .compact .job-phases button{min-height:34px;font-size:11px;padding:6px 9px;justify-content:center}
+ .compact .cut-settings h2{display:none}
+ .compact .file-feed{grid-template-columns:85px minmax(0,1fr);gap:4px 10px;padding-bottom:6px}
+ .compact .file-feed>label:first-child{font-size:12px}
+ .compact .feed-number input{width:65px;min-height:32px}
+ .compact #file-feed-range{grid-column:1/-1;min-height:26px}
+ .compact .feed-presets{grid-column:1;gap:3px}
+ .compact .feed-presets button{min-width:31px;min-height:32px;font-size:10px;padding:5px}
+ .compact .file-feed>.inline-check{grid-column:2;grid-row:3;font-size:11px}
+ .compact .setting-row{padding:8px 0;font-size:11px;gap:4px 10px}
+ .compact .setting-row strong{font-size:11px}
+ .compact .setting-row small{font-size:10px}
+ .compact .setting-row>span:first-child{min-width:92px}
+ .compact .setting-row .inline-check{font-size:11px}
+ .compact .map-summary>small{flex:1;min-width:0}
+ .compact .map-summary .text-button{font-size:10px;min-height:26px}
+ .compact .job-extent>span{font-size:10px;line-height:1.4}
+ .compact .parameters summary{font-size:11px;padding:10px 0;min-height:34px}
+ .compact details.job-extent summary{padding:9px 0;font-size:11px;min-height:32px}
+ .compact details.job-extent small{font-size:10px}
+ .compact details.job-extent>div{font-size:10px}
+ .compact .job-actions{order:3;flex:none;display:block;padding:8px 10px;margin:0;position:static;border-top:1px solid var(--border)}
+ .compact .job-progress{margin-bottom:7px}
+ .compact .progress-label{font-size:10px}
+ .compact .execution-buttons{display:flex;gap:6px}
+ .compact .execution-buttons button{flex:1;min-width:0;min-height:36px;font-size:11px;padding:6px 5px;gap:4px}
+ .compact .execution-buttons .primary{min-width:0;flex:1.5}
+ .compact .execution-buttons button svg{width:15px}
+ .compact .safety{font-size:9px;min-height:12px}
+ .compact .surface-preview{grid-template-columns:minmax(0,1fr)}
+ .compact .surface-plan .surface-grid button{min-height:34px;font-size:11px}
+ .compact .surface-heading>.text-button{font-size:10px}
+ .compact .surface-custom label,.compact .surface-area label{font-size:11px}
+ .compact .surface-overview .surface-plot{height:var(--surface-height)!important}
+ .compact .zero-probe{font-size:11px;margin-top:12px;padding-top:12px}
+ .compact .probe-inputs label{font-size:11px}
+}
+@media(max-width:760px) and (max-height:780px){
+ .compact .operator{padding:8px}
+ .compact .job-phases{margin-bottom:6px}
+ .compact .parameters summary{padding:7px 0;min-height:32px}
+ .compact .camera-panel.collapsed{height:32px}
+ .compact .file-name small{font-size:9px}
+}

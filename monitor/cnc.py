@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # cnc.py
-# 2026-10-18
+# 2026-10-19
 # - Single USB owner, grid probing, bound height maps and compensated file jobs.
 # ---------------------------------------------------------------------------
 """Manual CNC access; never reconnect, home, unlock or start jobs implicitly."""
@@ -12,6 +12,7 @@ from monitor.jobs import JobRunner, parse_program
 from monitor.probes import ZProbe
 from monitor.surfaces import SurfaceScan
 from monitor.compensation import compensate_program, live_offset
+from monitor.feed import with_xy_feed
 
 SERIAL_PATH = "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
 
@@ -126,7 +127,7 @@ class Controller:
                 self.offset, self.surface.offset
             )):
                 self.surface.invalidate("Zero materiału zmieniło się.")
-                if self.jobs.active() and self.jobs.execution is not None:
+                if self.jobs.active() and self.jobs.status()["compensated"]:
                     raise RuntimeError(
                         "Zero mapy zmieniło się podczas programu."
                     )
@@ -363,6 +364,10 @@ class Controller:
                         "Start wymaga G54 i wyłączonego wrzeciona."
                     )
                 execution = None
+                if "xy_feed" in payload:
+                    execution = with_xy_feed(
+                        self.jobs.program, payload["xy_feed"]
+                    )
                 if payload.get("surface_map_id") is not None:
                     surface = self.surface
                     if not surface.valid or surface.map_id != payload.get(
@@ -378,7 +383,7 @@ class Controller:
                         surface.invalidate("Zero materiału zmieniło się.")
                         raise ValueError("Zero mapy zmieniło się.")
                     execution = compensate_program(
-                        self.jobs.program, surface
+                        execution or self.jobs.program, surface
                     )
                 return self.jobs.start(payload.get("job_id"), execution)
         with self.lock:

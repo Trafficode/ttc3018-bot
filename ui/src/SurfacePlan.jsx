@@ -92,6 +92,14 @@ function PlanPlot({plan, bounds, map}) {
     aria-label={`Plan ${plan.points.length} punktów. Oś X w prawo, Y w górę. Wartości ΔZ w mm względem X=0, Y=0; dokładne wyniki w liście punktów poniżej.`}/></div>;
 }
 
+export function SurfaceOverview({job, map}) {
+  if (!job.bounds_mm || !map?.area || !map?.samples?.length) return <p class="map-empty">Brak zmierzonej mapy dla tego pliku.</p>;
+  const plan = createSurfacePlan(job.bounds_mm, {columns:map.columns, rows:map.rows, area:map.area});
+  if (plan.error) return <p class="map-empty">{plan.error}</p>;
+  const heights = surfaceHeights(map);
+  return <section class="surface-overview" aria-label="Podgląd mapy Z"><h3>Mapa Z <small>{map.completed} / {map.total} · {map.valid ? 'gotowa' : map.active ? 'pomiar' : 'nieaktualna'}</small></h3><PlanPlot plan={plan} bounds={job.bounds_mm} map={map}/><p>ΔZ względem X=0, Y=0 · mm</p>{heights.min !== null && <p>Min {delta(heights.min)} · max {delta(heights.max)} · różnica {number(heights.max - heights.min)} mm</p>}<p>Brąz: wyżej · niebieski: niżej · zielony: zero</p></section>;
+}
+
 export function SurfacePlan({job, settings, onChange, locked, canProbe, map, onStart, onStop, canStop, useMap, onUseMap}) {
   const [open, setOpen] = useState(true);
   const [editArea, setEditArea] = useState(false);

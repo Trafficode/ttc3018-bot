@@ -69,7 +69,7 @@ export function createController(fetcher = fetch, clock = globalThis) {
         data.value = next;
         offline.value = false;
         if (!next.cnc.z_probe?.active) probeLease = null;
-        if (next.cnc.z_probe?.state === 'completed' && oldProbe && oldProbe !== 'completed' && next.cnc.connected && (next.cnc.z_probe.kind !== 'surface' || next.cnc.surface_map?.valid)) info(next.cnc.z_probe.kind === 'surface' ? 'Mapa powierzchni gotowa do kompensacji Z. Zdejmij krokodylek z frezu przed uruchomieniem wrzeciona.' : 'Zero Z ustawione sondą. Frez odsunięty 1 mm; zdejmij krokodylek przed włączeniem wrzeciona.');
+        if (next.cnc.z_probe?.state === 'completed' && oldProbe && oldProbe !== 'completed' && next.cnc.connected && (next.cnc.z_probe.kind !== 'surface' || next.cnc.surface_map?.valid)) info(next.cnc.z_probe.kind === 'surface' ? 'Mapa Z gotowa. Zdejmij krokodylek z frezu przed startem.' : 'Zero Z ustawione sondą. Frez odsunięty 1 mm; zdejmij krokodylek przed włączeniem wrzeciona.');
         if (['failed', 'stopped'].includes(next.cnc.z_probe?.state) && oldProbe !== next.cnc.z_probe.state) error(next.cnc.z_probe.error || 'Sondowanie przerwane. Sprawdź maszynę i zero.');
         if (!activeStates.includes(next.cnc.job?.state)) lease = null;
         if (next.cnc.job?.state === 'completed' && activeStates.includes(oldJob.state)) info('Program zakończony. Sterownik zgłasza bezczynność.');
