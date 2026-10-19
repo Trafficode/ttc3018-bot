@@ -26,7 +26,13 @@ locate copper or clamps. Confirm those physically before starting.
    compensation will be used.
 
 The first reference touch sets G54 Z=0 without changing X/Y. Default first
-descent is at most 1 mm at 20 mm/min. Position the tool closer than that to copper.
+descent is at most 1.5 mm at 20 mm/min. Position the tool closer than that to copper.
+Single-point zero finishes at Z=1 mm. A 1 mm reference descent from there ends
+exactly at nominal Z=0 and may finish without detecting contact. The default
+1.5 mm gives 0.5 mm of search margin. The confirmation shows start and target Z;
+the operator must check that the complete bounded travel is safe. This is a
+maximum search distance, not a requested cutting depth. It does not affect the
+grid's clearance or lower search depth and never retries a failed contact.
 The tool then retracts to Z=2 mm before every XY move. At each grid point it
 probes down toward Z=-1 mm, records the contact and retracts before moving on.
 It ends over the last point at the configured clearance, not at X/Y zero.
@@ -61,6 +67,12 @@ polarity changes, disconnect and service restart invalidate them. A changed WCO
 (work coordinate offset) invalidates the map; it also aborts a compensated job.
 Map data lives only in RPi memory. Physical stock/tool changes cannot be detected:
 repeat the measurement after changing the tool, PCB placement or clamps.
+
+GRBL ALARM:5 means the controller did not detect contact within the commanded
+search travel. Apparent physical touch does not prove electrical detection.
+The UI explains this code; the runner still aborts and disconnects on failure.
+The retained map error and sample count distinguish it from a UI service crash,
+but old reports do not retain the exact failed phase or reference start Z.
 
 ## Compensated execution
 

@@ -1,5 +1,9 @@
 import {signal, computed} from '@preact/signals';
 
+export function probeFailureText(message) {
+  return String(message).replace(/\bALARM:5\b/g, 'ALARM:5 — sterownik nie wykrył styku w zadanym zakresie zjazdu. Sprawdź kontakt elektryczny z miedzią i zakres zjazdu dla bieżącej próby.');
+}
+
 export const activeStates = ['running', 'draining', 'pausing', 'paused', 'resuming'];
 export function createController(fetcher = fetch, clock = globalThis) {
   const data = signal(null);
@@ -70,7 +74,7 @@ export function createController(fetcher = fetch, clock = globalThis) {
         offline.value = false;
         if (!next.cnc.z_probe?.active) probeLease = null;
         if (next.cnc.z_probe?.state === 'completed' && oldProbe && oldProbe !== 'completed' && next.cnc.connected && (next.cnc.z_probe.kind !== 'surface' || next.cnc.surface_map?.valid)) info(next.cnc.z_probe.kind === 'surface' ? 'Mapa Z gotowa. Zdejmij krokodylek z frezu przed startem.' : 'Zero Z ustawione sondą. Frez odsunięty 1 mm; zdejmij krokodylek przed włączeniem wrzeciona.');
-        if (['failed', 'stopped'].includes(next.cnc.z_probe?.state) && oldProbe !== next.cnc.z_probe.state) error(next.cnc.z_probe.error || 'Sondowanie przerwane. Sprawdź maszynę i zero.');
+        if (['failed', 'stopped'].includes(next.cnc.z_probe?.state) && oldProbe !== next.cnc.z_probe.state) error(probeFailureText(next.cnc.z_probe.error || 'Sondowanie przerwane. Sprawdź maszynę i zero.'));
         if (!activeStates.includes(next.cnc.job?.state)) lease = null;
         if (next.cnc.job?.state === 'completed' && activeStates.includes(oldJob.state)) info('Program zakończony. Sterownik zgłasza bezczynność.');
         const condition = [next.cnc.state === 'Alarm' ? 'Alarm CNC' : '', next.cnc.job?.error || ''].filter(Boolean).join(' · ');

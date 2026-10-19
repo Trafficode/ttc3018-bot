@@ -28,6 +28,11 @@ const assert = require('node:assert/strict');
   assert.deepEqual(bounds, {X: [-2, 8], Y: [5, 15]}, 'Planning cannot mutate uploaded bounds');
   assert.deepEqual(settings.area, bounds);
   assert.equal(surfaceRequest(bounds, settings).clearance, 2);
+  assert.equal(surfaceRequest(bounds, settings).distance, 1.5);
+  assert.equal(surfaceRequest(bounds, {...settings,distance:1}).distance,1,
+    'An explicitly selected search limit must never be extended silently');
+  assert.equal(1 - surfaceRequest(bounds, settings).distance, -0.5,
+    'A reference starting at the single-probe Z=1 retract must search past nominal Z=0');
   assert.equal(surfaceRequest(bounds, {...settings, clearance:0}).error !== undefined, true);
   assert.equal(surfaceRequest(bounds, {...settings, below:3}).error !== undefined, true);
   const map = {id:'map', job_id:'file', columns:3, rows:3, area:bounds};

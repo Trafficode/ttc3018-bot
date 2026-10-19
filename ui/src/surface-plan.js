@@ -37,7 +37,9 @@ export function surfaceHeights(map) {
 }
 
 export function defaultSurfaceSettings(bounds) {
-  return {columns: 3, rows: 3, clearance: 2, below: 1, distance: 1, feed: 20, area: {
+  // Single-point zero retracts to Z=1. Leave 0.5 mm of search margin below
+  // that nominal surface; the operator confirms the full bounded travel.
+  return {columns: 3, rows: 3, clearance: 2, below: 1, distance: 1.5, feed: 20, area: {
     X: [...bounds.X], Y: [...bounds.Y]
   }};
 }
@@ -46,7 +48,7 @@ export function surfaceRequest(bounds, settings) {
   const current = settings || defaultSurfaceSettings(bounds);
   const plan = createSurfacePlan(bounds, current);
   if (plan.error) return {error: plan.error};
-  const params = Object.fromEntries(['clearance','below','distance','feed'].map(key => [key, Number(current[key] ?? {clearance:2,below:1,distance:1,feed:20}[key])]));
+  const params = Object.fromEntries(['clearance','below','distance','feed'].map(key => [key, Number(current[key] ?? {clearance:2,below:1,distance:1.5,feed:20}[key])]));
   if (Object.values(params).some(value => !Number.isFinite(value)) || params.clearance < 1 || params.clearance > 3 || params.below < 0.1 || params.below > 2 || params.clearance + params.below > 5 || params.distance < 0.1 || params.distance > 5 || params.feed < 10 || params.feed > 60) return {error:'Sprawdź parametry sondowania: prześwit 1–3 mm, zakres pod zerem 0,1–2 mm, pierwszy zjazd 0,1–5 mm, posuw 10–60 mm/min.'};
   return {columns:plan.columns, rows:plan.rows, area:plan.area, ...params};
 }
