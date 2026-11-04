@@ -13,7 +13,7 @@ flowchart LR
     Monitor --> DHT
     SSH --> Scripts[Explicit repository checks]
     Scripts --> Camera[Camera Rev 1.3]
-    Scripts --> DHT[DHT22 GPIO17]
+    Scripts --> DHT[DHT22 GPIO16 / physical pin 36]
     Operator[Local operator] --> Monitor
     Monitor --> USB[Explicit single USB connection owner]
     USB --> CNC[TTC3018 controller]

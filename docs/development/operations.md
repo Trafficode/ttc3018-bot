@@ -7,7 +7,7 @@ camera or DHT22 tests; otherwise readers will compete for the same devices.
 | --- | --- | --- |
 | Static validation | `bash scripts/check.sh` | No hardware access |
 | Host inventory | `bash scripts/diagnose.sh` | Read-only; no CNC connection |
-| DHT22 check | `bash scripts/sensor-test.sh --gpio 17` | Samples only selected sensor pin |
+| DHT22 check | `bash scripts/sensor-test.sh --gpio 16` | Samples only selected sensor pin |
 | Still image | `bash scripts/camera-snapshot.sh` | Captures one image in `.local/captures/` |
 | Install monitoring | `bash scripts/install-monitor.sh` | Enables user monitoring service |
 | Service status | `systemctl --user status ttc-monitor` | Shows camera/sensor service |
@@ -99,7 +99,8 @@ orientation. Confirm the actual sensor model before changing a driver overlay.
 Never connect or disconnect the ribbon while powered. If the camera is busy,
 identify the existing capture owner instead of killing arbitrary processes.
 
-If DHT22 reads fail, check BCM GPIO17 versus physical pin 17, 3.3 V supply,
+If DHT22 reads fail, check `DHT_GPIO=16` in `.env`: header label GPIO16 is
+physical pin 36, while physical pin 16 is GPIO23. Check 3.3 V supply,
 common ground, module pull-up and `gpio` group membership. Do not run two
 sensor readers at once. Keep DHT22 away from the Pi CPU heat and CNC dust.
 

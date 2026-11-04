@@ -10,7 +10,7 @@ Internet access and an operator with sudo permission are required for setup.
    Wi-Fi and Secure Shell (SSH) access. SSH provides the remote terminal.
 2. With power disconnected, attach a Camera Rev 1.3 using a camera-specific
    22-to-15-pin cable for Pi 5. Attach DHT22 DATA to General-Purpose Input/Output
-   (GPIO) 17, physical pin 11; power to 3.3 V, physical pin 1; ground to pin 6.
+   (GPIO) 16, physical pin 36; power to 3.3 V, physical pin 1; ground to pin 6.
    GPIO numbers are not physical pin numbers. Check the sensor module labels;
    a bare sensor needs an external DATA pull-up to 3.3 V per its datasheet.
    Never connect a 5 V signal to a Pi GPIO. Disconnect CNC USB during setup.
@@ -66,7 +66,7 @@ working hardware. A camera change can require a different profile.
 ```bash
 bash scripts/check.sh
 bash scripts/diagnose.sh
-bash scripts/sensor-test.sh --gpio 17
+bash scripts/sensor-test.sh --gpio 16
 bash scripts/camera-snapshot.sh
 ```
 
@@ -113,6 +113,10 @@ if Serve cannot be configured, so authentication failure does not expose a LAN p
 
 To change the GPIO/camera profile, copy `config/host.env.example` to `.env`, edit
 the two values, then restart only `ttc-monitor.service`. Systemd loads that file;
+set `DHT_GPIO=16` for the header contact labelled GPIO16, physical pin 36.
+The service must have this explicit setting; without the file/override the
+legacy application fallback remains GPIO17. Physical pin 16 is GPIO23 and is
+not the selected contact.
 the one-shot scripts still use their explicit parameters. Do not copy credentials
 or host-specific IP addresses into the template. Stop monitoring before running
 the separate sensor or camera scripts: both devices must have one owner.

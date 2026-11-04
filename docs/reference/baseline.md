@@ -3,6 +3,11 @@
 This is evidence from the initial host, not a portable identity or a guarantee
 that the same versions remain available forever.
 
+Configuration update, 2026-11-04: the service profile now selects `DHT_GPIO=16`
+(header label GPIO16, physical pin 36). The sensor was disconnected during the
+change; GPIO16 measurements are not verified. The table below retains the
+original GPIO17 measurement evidence.
+
 | Component | Verified state |
 | --- | --- |
 | Board | Raspberry Pi 5 Model B Rev 1.1, 8 GB, aarch64 |
