@@ -9,6 +9,7 @@ DHT22 on GPIO17 and private Tailscale access.
 - [Verified hardware and software](docs/reference/baseline.md)
 - [System boundaries and next components](docs/architecture/system.md)
 - [Build and operate the component-based panel](docs/development/operator-ui.md)
+- [Local manufacturing collection and Tractor transfer](docs/development/file-library.md)
 - [Plan PCB surface measurements](docs/development/surface-plan.md)
 - [Check the probe and set automatic Z zero](docs/development/z-probe.md)
 - [10 mm PCB starter coupon and CAM files](docs/reference/pcb-cnc-coupon-10mm-cam.md)

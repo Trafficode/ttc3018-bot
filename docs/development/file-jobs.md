@@ -1,5 +1,9 @@
 # G-code file jobs
 
+Persistent packages from Tractor are selected through **Z kolekcji** beside the
+disk-file workflow. See [local collection](file-library.md) for the transfer and
+storage contract. Import does not replace the current in-memory job.
+
 The operator uploads a file, checks its displayed bounds, establishes work zero,
 then explicitly starts it. Upload never opens USB or executes a command. Files
 and progress are in memory and lost on service restart. Manual actions and file

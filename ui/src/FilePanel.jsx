@@ -1,6 +1,7 @@
 import {IconFileCode, IconFolder, IconFocus2, IconPlayerPlay, IconChevronDown, IconSettings} from '@tabler/icons-preact';
 import {SurfacePlan} from './SurfacePlan.jsx';
 import {surfaceHeights} from './surface-plan.js';
+import {LibraryPicker} from './LibraryPicker.jsx';
 
 export function FilePanel({controller, job, cnc, free, manual, request, inputRef, upload, phase, onPhase, fileFeed, onFeed, originalFeed, onOriginal, feedValid, surfaceReady, surfaceSettings, onSurfaceSettings, useMap, onUseMap, ask}) {
   const locked = !free || !!request;
@@ -9,6 +10,7 @@ export function FilePanel({controller, job, cnc, free, manual, request, inputRef
   const heights = surfaceHeights(surfaceReady ? cnc.surface_map : null);
   const spread = heights.min === null ? null : (heights.max - heights.min).toLocaleString('pl-PL', {maximumFractionDigits:3});
   return <>
+    <LibraryPicker controller={controller} locked={locked}/>
     <div class="file-choice"><IconFileCode size={23}/><div class="file-name"><strong>{job.name || 'Nie wybrano pliku'}</strong><small>{job.name ? `${job.total} poleceń · F ≤ ${job.max_feed} mm/min · S ≤ ${job.max_power}` : 'G-code · do 1 MiB'}</small></div><button type="button" disabled={locked} title={locked ? 'Poczekaj na zakończenie zadania lub pomiaru' : 'Wczytaj program G-code'} onClick={() => inputRef.current.click()}><IconFolder size={17}/>Wybierz plik</button><input ref={inputRef} id="job-file" class="file-input" type="file" accept=".nc,.ngc,.gcode,.tap" disabled={locked} onChange={upload}/></div>
     {job.id ? <>
       <div class="job-phases" role="group" aria-label="Etap pracy z plikiem"><button type="button" aria-pressed={phase === 'prepare'} disabled={controller.active.value && !controller.probing.value} onClick={() => onPhase('prepare')}><IconFocus2 size={17}/>Przygotowanie</button><button type="button" aria-pressed={phase === 'cut'} disabled={controller.probing.value} onClick={() => onPhase('cut')}><IconPlayerPlay size={17}/>Frezowanie</button></div>

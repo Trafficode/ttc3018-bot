@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 from monitor.cnc import Controller
+from monitor.library import PackageLibrary
+from monitor.library_http import library_request
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_FRAME_BYTES = 2 * 1024 * 1024
@@ -222,6 +224,9 @@ class MonitorServer(ThreadingHTTPServer):
         self.stream_slots = threading.BoundedSemaphore(4)
         self.cnc = Controller()
         self.control_token = secrets.token_urlsafe(32)
+        self.library = PackageLibrary(
+            Path.home() / ".local/share/bark-beetle/library"
+        )
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -251,6 +256,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         """Serve the dashboard, status, fresh snapshot or shared MJPEG stream."""
+        if library_request(self):
+            return
         path = urlsplit(self.path).path
         assets = {
             "/favicon.svg": ("favicon.svg", "image/svg+xml"),
@@ -287,6 +294,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         """Accept allowlisted manual actions with a same-origin CSRF token."""
+        if library_request(self):
+            return
         if urlsplit(self.path).path != "/api/cnc/action":
             self.respond(501, "text/plain", b"Unsupported request")
             return

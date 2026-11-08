@@ -1,0 +1,14 @@
+.library-picker { margin: 10px 0 16px; }
+.library-picker button { min-height: 44px; }
+.library-browser { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+.library-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.library-list { max-height: 330px; overflow: auto; margin-top: 8px; }
+.library-list > button { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 4px; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; }
+.library-browser small { display: block; margin-top: 4px; font-size: 12px; opacity: .72; overflow-wrap: anywhere; }
+.library-browser p { font-size: 13px; line-height: 1.5; }
+.library-project { margin: 12px 0; }
+.library-files > div { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.library-files > div > span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.library-files strong { font-size: 13px; }
+.library-files button { flex-shrink: 0; }
+@media (max-width: 540px) { .library-list > button { align-items: flex-start; flex-direction: column; gap: 6px; } }
