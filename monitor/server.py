@@ -264,6 +264,17 @@ class Handler(BaseHTTPRequestHandler):
             "/": ("index.html", "text/html; charset=utf-8"),
             "/style.css": ("style.css", "text/css; charset=utf-8"),
             "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+            "/manifest.webmanifest": (
+                "manifest.webmanifest", "application/manifest+json"
+            ),
+            "/sw.js": ("sw.js", "text/javascript; charset=utf-8"),
+            "/offline.html": ("offline.html", "text/html; charset=utf-8"),
+            "/offline.css": ("offline.css", "text/css; charset=utf-8"),
+            "/icons/app-192.png": ("icons/app-192.png", "image/png"),
+            "/icons/app-512.png": ("icons/app-512.png", "image/png"),
+            "/icons/app-maskable-512.png": (
+                "icons/app-maskable-512.png", "image/png"
+            ),
         }
         try:
             if path in assets:
