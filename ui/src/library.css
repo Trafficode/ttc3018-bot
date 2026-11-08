@@ -12,3 +12,30 @@
 .library-files strong { font-size: 13px; }
 .library-files button { flex-shrink: 0; }
 @media (max-width: 540px) { .library-list > button { align-items: flex-start; flex-direction: column; gap: 6px; } }
+.cam-collections { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.cam-collections button { flex: 1; }
+.cam-collections button[aria-pressed="true"] { font-weight: 700; border-color: var(--accent); background: var(--selected); }
+.cam-preparation { margin: 16px 0; }
+.cam-preparation h3 { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.cam-operation-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.cam-operation-status span { opacity: .72; }
+.cam-facts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; margin: 16px 0; }
+.cam-facts dt { font-size: 12px; opacity: .72; }
+.cam-facts dd { margin: 4px 0 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.cam-clearance { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 18px 0; font-size: 13px; }
+.cam-clearance input { width: 90px; min-height: 44px; }
+.cam-confirm { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.5; margin: 16px 0; }
+.cam-confirm input { width: 20px; height: 20px; flex-shrink: 0; margin: 0; }
+.cam-primary { margin: 16px 0; }
+.library-browser details { margin: 14px 0; font-size: 13px; }
+.library-browser summary { cursor: pointer; min-height: 36px; display: flex; align-items: center; }
+.cam-result-state { display: flex; align-items: center; gap: 10px; }
+.cam-result-state small { margin: 0; }
+.cam-preview { margin: 16px 0; }
+.cam-preview canvas { width: 100%; max-height: 380px; object-fit: contain; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; }
+.cam-preview figcaption { font-size: 12px; line-height: 1.5; margin-top: 6px; }
+.cam-findings { max-height: 180px; overflow: auto; padding-left: 20px; }
+.cam-findings li { margin: 10px 0; }
+.cam-findings strong { display: block; font-size: 12px; }
+@media (max-width: 540px) { .cam-primary { width: 100%; } .cam-collections { gap: 4px; } .cam-collections button { padding: 8px 6px; font-size: 12px; } }
+@media (max-width: 540px) { .compact .library-picker button, .compact .library-picker summary { min-height: 44px; } .cam-confirm { min-height: 44px; align-items: center; } }

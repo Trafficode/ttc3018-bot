@@ -1,0 +1,3 @@
+# Optional offline CAM worker, pinned for the validated ARM Python environment.
+gerbonara==1.6.3
+shapely==2.2.0

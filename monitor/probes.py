@@ -47,8 +47,8 @@ class ZProbe:
             raise ValueError("Wymagane potwierdzenie sondowania.")
         distance = float(payload.get("distance", 0))
         feed = float(payload.get("feed", 0))
-        if not math.isfinite(distance) or not 0.1 <= distance <= 5:
-            raise ValueError("Droga sondowania: 0,1–5 mm.")
+        if not math.isfinite(distance) or not 0.1 <= distance <= 10:
+            raise ValueError("Droga sondowania: 0,1–10 mm.")
         if not math.isfinite(feed) or not 10 <= feed <= 60:
             raise ValueError("Posuw sondowania: 10–60 mm/min.")
         if controller.port is None or controller.jobs.active():

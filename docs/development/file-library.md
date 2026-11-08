@@ -7,11 +7,12 @@ including active job/probe exclusion and old surface-map invalidation. No import
 or selection starts movement, opens USB, or starts the spindle.
 
 Tractor sends checked PCB geometry and optionally operator-supplied NC programs.
-Computer-aided manufacturing (CAM) creates the toolpaths separately on the PC.
-CAD-only packages show **Wymaga CAM**; their ZIP can be downloaded for CAM. The
-service does not convert Gerber/Excellon into G-code. All files share the declared
-PCB origin and machining side. Program-to-geometry correspondence is an explicit
-operator declaration, not a geometrically verified property.
+Computer-aided manufacturing (CAM) can now prepare copper isolation on the RPi.
+**Paczki z Tractor** keeps original sources; **Programy obróbki** keeps generated
+results. See [CAM preparation](cam-preparation.md) for profile selection, checked
+toolpaths, failures and the separate worker boundary. Drilling and outline remain
+unprepared. Externally supplied NC still uses an explicit operator declaration
+of geometry correspondence; it does not gain the generated-result checks.
 
 ## Storage and API
 
@@ -40,7 +41,8 @@ read the collection, load a file or invoke controller actions.
 The operator UI uses `X-PiloMill-Token` for GET `/api/library`, GET
 `/api/library/files/:id/:name`, and same-origin POST `/api/library/select` with
 `packageId` and `name`. Selection delegates to the existing controller owner.
-There is no parallel serial connection or collection background worker.
+There is no parallel serial connection. CAM has a separate isolated computation
+worker; collection import itself never starts it.
 
 ## Validation and deployment
 

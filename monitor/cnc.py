@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # cnc.py
-# 2026-10-19
-# - Single USB owner, grid probing, bound height maps and compensated file jobs.
+# 2026-10-24
+# - Exclusive USB owner for file jobs, grid maps and service depth trials.
 # ---------------------------------------------------------------------------
 """Manual CNC access; never reconnect, home, unlock or start jobs implicitly."""
 
@@ -13,8 +13,11 @@ from monitor.probes import ZProbe
 from monitor.surfaces import SurfaceScan
 from monitor.compensation import compensate_program, live_offset
 from monitor.feed import with_xy_feed
+from monitor.calibration import Calibration, with_cut_depth
+from monitor.profile_test import preview as profile_preview
 
 SERIAL_PATH = "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
+JOG_LIMITS_MM = {"X": 300, "Y": 180, "Z": 10}
 
 
 def parse_status(line):
@@ -48,8 +51,12 @@ def manual_command(action, payload):
         feed = float(payload.get("feed", 0))
         if axis not in ("X", "Y", "Z"):
             raise ValueError("Invalid axis")
-        if not math.isfinite(distance) or not 0 < abs(distance) <= 10:
-            raise ValueError("Step must be between 0 and 10 mm")
+        if not math.isfinite(distance) or not (
+            0.01 <= abs(distance) <= JOG_LIMITS_MM[axis]
+        ):
+            raise ValueError(
+                f"Krok osi {axis}: 0,01–{JOG_LIMITS_MM[axis]} mm."
+            )
         if not math.isfinite(feed) or not 1 <= feed <= 300:
             raise ValueError("Feed must be 1 to 300 mm/min")
         return f"$J=G91 G21 {axis}{distance:g} F{feed:g}"
@@ -70,7 +77,7 @@ def manual_command(action, payload):
 class Controller:
     """Serialize polling and commands through one exclusive USB owner."""
 
-    def __init__(self):
+    def __init__(self, profile_path=None):
         self.lock = threading.RLock()
         self.port = None
         self.report = None
@@ -83,8 +90,10 @@ class Controller:
         self.surface = SurfaceScan()
         self.last_probe = self.probe
         self.probe_tested = False
+        self.calibration = Calibration(profile_path)
 
     def _close(self, error):
+        self.calibration.invalidate("Połączenie CNC zostało przerwane.")
         self.surface.invalidate("Połączenie CNC zostało przerwane.")
         self.probe_tested = False
         if self.port is not None:
@@ -119,10 +128,19 @@ class Controller:
     def _accept_status(self, line):
         """Update cached coordinates from either polling or the job reader."""
         report = parse_status(line)
-        if report["state"] == "Idle" and report["probe_triggered"]:
+        if report["probe_triggered"] and not self.last_probe.active() and (
+            not self.jobs.active() and not self.calibration.runner.active()
+        ):
             self.probe_tested = True
         if "WCO" in report:
             self.offset = report["WCO"]
+            scan = self.calibration.scan
+            if scan.offset is not None and any(
+                abs(a - b) > 0.002 for a, b in zip(self.offset, scan.offset)
+            ):
+                self.calibration.invalidate("Zero materiału zmieniło się.")
+                if self.calibration.runner.active():
+                    raise RuntimeError("Zero zmieniło się podczas próby.")
             if self.surface.valid and any(abs(a - b) > 0.002 for a, b in zip(
                 self.offset, self.surface.offset
             )):
@@ -227,6 +245,14 @@ class Controller:
                 "probe_inverted": inverted,
                 "z_probe": self.last_probe.status(),
                 "surface_map": self.surface.status(),
+                "jog_limits_mm": JOG_LIMITS_MM.copy(),
+                "geometry_model": {
+                    "type": "V",
+                    "correction": self.calibration.profiles.active["model"],
+                },
+                "calibration": self.calibration.status(),
+                "calibration_profiles": self.calibration.profiles.status(),
+                "profile_test_plan": profile_preview(self.calibration.profiles),
             }
 
     def disconnect(self):
@@ -263,6 +289,71 @@ class Controller:
                 return self.last_probe.heartbeat(payload.get("lease"))
             if self.last_probe.active():
                 raise ValueError("Sondowanie aktywne — użyj Przerwij sondę.")
+            if self.calibration.runner.active() and action not in (
+                "job_pause", "job_resume", "job_stop", "job_heartbeat"
+            ):
+                raise ValueError("Próba aktywna — użyj Pauzy lub Stop.")
+            if action in ("profile_create", "profile_update", "profile_select",
+                          "profile_delete"):
+                if self.jobs.active():
+                    raise ValueError("Najpierw zakończ aktywny program.")
+                # Read only through the existing owner; never open USB here.
+                if self.port is not None:
+                    self._status()
+                    if self.report["state"] != "Idle":
+                        raise ValueError("Zmiana profilu wymaga Idle.")
+                store = self.calibration.profiles
+                if action == "profile_create":
+                    return store.create(payload)
+                if action == "profile_update":
+                    result = store.update(payload)
+                    self.surface.invalidate("Zmieniono parametry profilu.")
+                    if self.calibration.mode == "profile_test":
+                        self.calibration.invalidate("Zmieniono profil testu.")
+                    return result
+                if action == "profile_delete":
+                    target = next((item for item in store.data["profiles"]
+                                   if item["id"] == payload.get("profile_id")),
+                                  None)
+                    if payload.get("confirmed") is not True or (
+                        target is None or payload.get("profile_fingerprint")
+                        != target["fingerprint"]
+                    ):
+                        raise ValueError("Potwierdź usunięcie aktualnego profilu.")
+                    was_active = payload.get("profile_id") == store.active["id"]
+                    result = store.delete(payload.get("profile_id"))
+                    if was_active:
+                        self.surface.invalidate("Usunięto aktywny profil.")
+                        if self.calibration.mode == "profile_test":
+                            self.calibration.invalidate("Usunięto profil testu.")
+                    return result
+                store.select(payload.get("profile_id"))
+                self.surface.invalidate("Zmieniono profil kalibracji.")
+                if self.calibration.mode == "profile_test":
+                    self.calibration.invalidate("Zmieniono profil kalibracji.")
+                return
+            if action in ("service_prepare", "service_cut", "service_save",
+                          "profile_test_prepare", "profile_test_cut",
+                          "profile_test_finish"):
+                if self.jobs.active() or self.calibration.runner.active():
+                    raise ValueError("Najpierw zakończ aktywny program.")
+                if action == "service_save":
+                    return self.calibration.save(payload)
+                if self.port is None:
+                    raise ValueError("Najpierw połącz CNC.")
+                try:
+                    if action == "profile_test_finish":
+                        return self.calibration.finish(self, payload)
+                    if action in ("service_prepare", "profile_test_prepare"):
+                        return self.calibration.prepare(
+                            self, payload, action == "profile_test_prepare"
+                        )
+                    return self.calibration.cut(
+                        self, payload, action == "profile_test_cut"
+                    )
+                except RuntimeError as error:
+                    self._close(str(error))
+                    raise
             if action in ("probe_start", "surface_start"):
                 try:
                     runner = (
@@ -270,9 +361,11 @@ class Controller:
                         else self.probe
                     )
                     result = runner.start(self, payload)
+                    self.calibration.invalidate_repeat("Rozpoczęto sondowanie.")
                     self.last_probe = runner
                     if action == "probe_start":
                         self.surface.invalidate("Ponownie ustawiono zero Z.")
+                        self.calibration.invalidate("Ponownie ustawiono zero Z.")
                     return result
                 except RuntimeError as error:
                     self._close(str(error))
@@ -322,15 +415,18 @@ class Controller:
             # A polarity change invalidates every previous contact test.
             self.probe_tested = False
             self.surface.invalidate("Zmiana polaryzacji sondy.")
+            self.calibration.invalidate("Zmiana polaryzacji sondy.")
 
     def _action(self, action, payload):
         """Perform one manual command; failures close and never retry USB."""
+        runner = (self.calibration.runner if self.calibration.runner.active()
+                  else self.jobs)
         if action in ("job_pause", "job_resume", "job_stop"):
             if action == "job_resume" and payload.get("confirmed") is not True:
                 raise ValueError("Wymagane potwierdzenie wznowienia.")
-            return self.jobs.control(action[4:], payload.get("job_id"))
+            return runner.control(action[4:], payload.get("job_id"))
         if action == "job_heartbeat":
-            return self.jobs.heartbeat(payload.get("lease"))
+            return runner.heartbeat(payload.get("lease"))
         if action == "job_clear":
             result = self.jobs.clear()
             self.surface.invalidate("Usunięto plik.")
@@ -347,6 +443,9 @@ class Controller:
                     raise ValueError("Połącz CNC; zakończ poprzednie zadanie.")
                 if payload.get("confirmed") is not True:
                     raise ValueError("Wymagane potwierdzenie operatora.")
+                self.calibration.profiles.check_program(
+                    self.jobs.program, payload
+                )
                 self._status()
                 if self.report["state"] != "Idle":
                     raise ValueError("Start wymaga stanu Idle.")
@@ -364,9 +463,18 @@ class Controller:
                         "Start wymaga G54 i wyłączonego wrzeciona."
                     )
                 execution = None
+                if payload.get("service_depth") is True:
+                    profile = self.calibration.profile
+                    if profile is None or (
+                        payload.get("expected_depth") != profile["depth"]
+                    ):
+                        raise ValueError("Profil Z zmienił się; odśwież panel.")
+                    execution = with_cut_depth(
+                        self.jobs.program, profile["depth"]
+                    )
                 if "xy_feed" in payload:
                     execution = with_xy_feed(
-                        self.jobs.program, payload["xy_feed"]
+                        execution or self.jobs.program, payload["xy_feed"]
                     )
                 if payload.get("surface_map_id") is not None:
                     surface = self.surface
@@ -385,7 +493,9 @@ class Controller:
                     execution = compensate_program(
                         execution or self.jobs.program, surface
                     )
-                return self.jobs.start(payload.get("job_id"), execution)
+                result = self.jobs.start(payload.get("job_id"), execution)
+                self.calibration.invalidate_repeat("Uruchomiono inny program.")
+                return result
         with self.lock:
             if self.jobs.active():
                 raise ValueError(
@@ -426,6 +536,7 @@ class Controller:
                 if action.startswith("zero_"):
                     self.offset = None
                     self.surface.invalidate("Ręcznie zmieniono zero materiału.")
+                    self.calibration.invalidate("Ręcznie zmieniono zero.")
                 self._status()
             except ValueError:
                 raise
@@ -440,10 +551,12 @@ class Controller:
             with self.lock:
                 if self.last_probe.active():
                     self.last_probe.tick(self)
+                elif self.calibration.runner.active():
+                    self.calibration.runner.tick(self)
                 elif self.jobs.active():
                     self.jobs.tick(self)
                 elif self.port is not None and (
-                    time.monotonic() - last_poll >= 0.5
+                    time.monotonic() - last_poll >= 0.1
                 ):
                     last_poll = time.monotonic()
                     try:
@@ -457,6 +570,10 @@ class Controller:
                 )
             if self.jobs.active():
                 self.jobs.abort(self, "Usługa zatrzymana podczas zadania.")
+            if self.calibration.runner.active():
+                self.calibration.runner.abort(
+                    self, "Usługa zatrzymana podczas próby."
+                )
             self._close("Service stopped")
 
 # ---------------------------------------------------------------------------

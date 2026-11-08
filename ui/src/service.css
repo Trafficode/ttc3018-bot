@@ -1,0 +1,46 @@
+.service-panel{display:flex;flex-direction:column;gap:12px;min-width:0}
+.service-module{display:flex;flex-direction:column;gap:8px;margin:0;padding:10px;border:1px solid var(--border);border-radius:4px;min-width:0}
+.service-module legend{font-size:11px;font-weight:650;padding:0 5px;color:var(--muted)}
+.service-module>small{font-size:10px;line-height:1.5;color:var(--muted)}
+.service-strip-label{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:11px}
+.service-strip-label input{width:80px;text-align:center}
+.service-estimate{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;background:var(--selected);border-radius:3px;font-size:11px}
+.service-estimate output{font:600 14px ui-monospace,monospace;white-space:nowrap}
+.service-title{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.service-title>span{font-size:11px;color:var(--muted)}
+.service-map{margin:0;border:1px solid var(--border);border-radius:4px;background:#f8f8f5;padding:8px}
+.service-map figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;font-size:11px}
+.service-map figcaption>span,.service-map small{color:var(--muted);font-size:10px}
+.service-map>svg{width:100%;height:auto;max-height:185px;display:block;overflow:visible}
+.service-map svg text{font:14px ui-monospace,monospace;fill:#263440}
+.probe-current circle{stroke:#a45b00;stroke-width:3}
+.depth-control{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center}
+.depth-control>label{font-size:12px;font-weight:600;color:var(--ink)}
+.depth-control>label small{color:var(--muted);font-weight:400}
+.depth-value{display:flex;gap:4px;align-items:center}
+.depth-value input{width:80px;text-align:center;font-family:ui-monospace,monospace}
+.depth-value button{min-width:32px}
+.depth-control>input[type=range]{grid-column:1/-1;width:100%;margin:0;accent-color:var(--accent)}
+.service-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.service-fields label{display:flex;flex-direction:column;gap:4px;font-size:11px}
+.service-fields input{width:100%;min-width:0}
+.service-speeds{grid-template-columns:repeat(2,minmax(0,1fr))}
+.service-spindle{display:grid;grid-template-columns:minmax(0,1fr) 80px;gap:4px 12px;align-items:center}
+.service-spindle>label{font-size:12px;font-weight:600}
+.service-spindle small{font-weight:400;color:var(--muted)}
+.service-spindle>input[type=range]{grid-column:1/-1;width:100%;margin:0;accent-color:var(--accent)}
+.service-spindle>input[type=number]{width:80px;text-align:center}
+.service-parameters{font-size:11px;border-bottom:1px solid var(--border);padding-bottom:6px}
+.service-parameters summary{cursor:pointer;padding:4px 0;color:var(--muted)}
+.service-parameters .service-fields{margin:8px 0}
+.compact .service-title h2{margin:0}
+.compact .operator:has(.service-panel) .tool-scroll{overflow-x:hidden}
+.service-check{display:flex;align-items:center;gap:7px;font-size:11px;color:inherit}
+.service-hint{font-size:11px;line-height:1.5;color:var(--muted);margin:0}
+.service-actions{display:grid;grid-template-columns:1fr;gap:9px;border-top:1px solid var(--border);padding-top:12px}
+.service-actions button{justify-content:center}
+.service-history{border-top:1px solid var(--border);padding-top:8px;font-size:11px}
+.service-history summary{cursor:pointer;padding:4px 0}
+.service-history ol{padding:0;list-style:none;max-height:150px;overflow:auto}
+.service-history li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)}
+@media(max-width:760px){.service-panel{gap:8px}.service-map>svg{max-height:140px}.service-fields{gap:6px}.service-fields label{font-size:10px}.depth-control>label{max-width:150px}.compact .service-panel button{min-height:36px}.service-map svg text{font-size:16px}}

@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # surfaces.py
-# 2026-10-18
-# - File-bound grid measurements using the existing guarded probe runner.
+# 2026-10-24
+# - Guarded file grids with a 1.4 mm limit on every probe descent.
 # ---------------------------------------------------------------------------
 """Reference touch, safe Z travel, serpentine sampling and map validity."""
 
@@ -10,6 +10,8 @@ import secrets
 import time
 
 from monitor.probes import ZProbe
+
+MAX_PROBE_TRAVEL = 1.4
 
 
 def plan_grid(bounds, payload):
@@ -108,16 +110,22 @@ class SurfaceScan(ZProbe):
         if program is None or payload.get("job_id") != controller.jobs.job_id:
             raise ValueError("Plik zmienił się; odśwież plan.")
         area, points = plan_grid(program["bounds_mm"], payload)
-        clearance = float(payload.get("clearance", 2))
-        below = float(payload.get("below", 1))
-        if not math.isfinite(clearance) or not 1 <= clearance <= 3 or (
-            not math.isfinite(below) or not 0.1 <= below <= 2
-            or clearance + below > 5
+        clearance = float(payload.get("clearance", 1))
+        below = float(payload.get("below", 0.4))
+        distance = float(payload.get("distance", MAX_PROBE_TRAVEL))
+        if not math.isfinite(clearance) or not 1 <= clearance <= 1.3 or (
+            not math.isfinite(below) or not 0.1 <= below <= 0.4
+            or clearance + below > MAX_PROBE_TRAVEL + 1e-9
+            or not math.isfinite(distance)
+            or not 0.1 <= distance <= MAX_PROBE_TRAVEL
         ):
-            raise ValueError("Prześwit 1–3 mm, zakres pod zerem 0,1–2 mm.")
+            raise ValueError(
+                "Maksymalny zjazd sondy: 1,4 mm. Prześwit 1–1,3 mm, "
+                "zakres pod zerem 0,1–0,4 mm; ich suma maks. 1,4 mm."
+            )
         if controller.offset is None:
             raise ValueError("Brak odczytu WCO; zaczekaj na status CNC.")
-        result = super().start(controller, payload)
+        result = super().start(controller, {**payload, "distance": distance})
         self.reference_xy = controller.report["position"][:2]
         self.expected_xy_offset = controller.offset[:2]
         self.map_id = secrets.token_hex(12)
@@ -193,12 +201,15 @@ class SurfaceScan(ZProbe):
             self.start_machine = machine[:]
             self.contact = None
             self.sampling = True
-            self.distance = self.clearance + self.below
+            # Respect the travel cap even if reported Z differs slightly from
+            # the commanded clearance because of step/position rounding.
+            target = max(-self.below, position[2] - MAX_PROBE_TRAVEL)
+            self.distance = position[2] - target
             self.deadline = (
                 time.monotonic() + self.distance / self.feed * 60 + 8
             )
             self._write(controller,
-                        f"G90G38.2Z{-self.below:g}F{self.feed:g}", "probing")
+                        f"G90G38.2Z{target:.4f}F{self.feed:g}", "probing")
         elif self.state == "contact_wait":
             if any(abs(machine[i] - self.start_machine[i]) > 0.01
                    for i in (0, 1)) or not (

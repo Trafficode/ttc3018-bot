@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # compensation.py
-# 2026-10-19
-# - Bilinear PCB height compensation of validated absolute linear programs.
+# 2026-10-24
+# - Grid and five-point height compensation of validated linear programs.
 # ---------------------------------------------------------------------------
 """Build a separate validated execution stream; never mutate an upload."""
 
@@ -12,6 +12,10 @@ from monitor.jobs import WORD, parse_program
 
 def height_at(surface, x, y):
     """Interpolate inside the complete rectangle; never extrapolate."""
+    if getattr(surface, "kind", None) == "calibration":
+        from monitor.calibration import five_height
+
+        return five_height(surface, x, y)
     area = surface.area
     if not area["X"][0] - 0.0001 <= x <= area["X"][1] + 0.0001 or not (
         area["Y"][0] - 0.0001 <= y <= area["Y"][1] + 0.0001
@@ -55,10 +59,12 @@ def live_offset(replies):
     return result
 
 
-def compensate_program(program, surface):
+def compensate_program(program, surface, approach_mm=None):
     """Split feed moves to <=0.5 mm XY and retain global rapid clearance."""
     if not surface.valid or len(surface.samples) != len(surface.points):
         raise ValueError("Brak kompletnej, aktualnej mapy powierzchni.")
+    if approach_mm is not None and approach_mm != 0.5:
+        raise ValueError("Podejście testu musi wynosić 0,5 mm.")
     lines = []
     sources = []
     position = {"X": None, "Y": None, "Z": None}
@@ -108,6 +114,14 @@ def compensate_program(program, surface):
         elif motion == 1:
             if any(value is None for value in position.values()):
                 raise ValueError("Brak pozycji przed ruchem kompensowanym.")
+            if approach_mm is not None and set(axes) == {"Z"} and (
+                target["Z"] < 0 and position["Z"] > approach_mm
+            ):
+                # XY has already reached the contour at the full safe height.
+                # Only this vertical rapid uses the LOCAL surface height.
+                local = height_at(surface, position["X"], position["Y"])
+                append(f"G0Z{local + approach_mm:.4f}",
+                       original["source_line"])
             length = math.hypot(target["X"] - position["X"],
                                 target["Y"] - position["Y"])
             count = max(1, math.ceil(length / spacing))
@@ -126,7 +140,12 @@ def compensate_program(program, surface):
         position = target
     result = parse_program(program["name"], "\n".join(lines))
     result["compensated"] = True
+    if approach_mm is not None:
+        result["approach_mm"] = approach_mm
+    if "tool_geometry" in program:
+        result["tool_geometry"] = program["tool_geometry"].copy()
     result["xy_feed"] = program.get("xy_feed")
+    result["cam_profile"] = program.get("cam_profile")
     for line in result["lines"]:
         line["source_line"] = sources[line["source_line"] - 1]
     return result

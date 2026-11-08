@@ -22,6 +22,8 @@ from urllib.parse import urlsplit
 from monitor.cnc import Controller
 from monitor.library import PackageLibrary
 from monitor.library_http import library_request
+from monitor.cam import CamCollection
+from monitor.cam_http import cam_request
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_FRAME_BYTES = 2 * 1024 * 1024
@@ -227,6 +229,8 @@ class MonitorServer(ThreadingHTTPServer):
         self.library = PackageLibrary(
             Path.home() / ".local/share/bark-beetle/library"
         )
+        self.cam = CamCollection(
+            Path.home() / ".local/share/bark-beetle/cam", self.library)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -256,7 +260,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         """Serve the dashboard, status, fresh snapshot or shared MJPEG stream."""
-        if library_request(self):
+        if cam_request(self) or library_request(self):
             return
         path = urlsplit(self.path).path
         assets = {
@@ -305,7 +309,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         """Accept allowlisted manual actions with a same-origin CSRF token."""
-        if library_request(self):
+        if cam_request(self) or library_request(self):
             return
         if urlsplit(self.path).path != "/api/cnc/action":
             self.respond(501, "text/plain", b"Unsupported request")
@@ -323,7 +327,10 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length))
             if not isinstance(payload, dict):
                 raise ValueError("Object required")
-            if payload.get("action") != "job_load" and length > 1024:
+            limit = 4096 if payload.get("action") in (
+                "profile_create", "profile_update"
+            ) else 1024
+            if payload.get("action") != "job_load" and length > limit:
                 raise ValueError("Invalid request size")
             result = self.server.cnc.action(payload.get("action"), payload)
             body = json.dumps({"ok": True, **(result or {})}).encode()

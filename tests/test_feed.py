@@ -10,7 +10,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from monitor.cnc import Controller
+from controller_fixture import Controller
 from monitor.compensation import compensate_program
 from monitor.feed import with_xy_feed
 from monitor.jobs import JobRunner, WORD, parse_program

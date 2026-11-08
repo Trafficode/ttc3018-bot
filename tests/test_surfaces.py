@@ -9,7 +9,7 @@ import math
 import unittest
 from unittest.mock import patch
 
-from monitor.cnc import Controller
+from controller_fixture import Controller
 from monitor.compensation import compensate_program, height_at, live_offset
 from monitor.jobs import WORD, parse_program
 from monitor.surfaces import SurfaceScan, plan_grid
@@ -37,7 +37,7 @@ class SurfaceTests(unittest.TestCase):
             "job_id": self.cnc.jobs.job_id, "confirmed": True,
             "position": [0, 0, 1], "distance": 1, "feed": 20,
             "columns": 3, "rows": 3, "area": {"X": [0, 10], "Y": [0, 10]},
-            "clearance": 2, "below": 1,
+            "clearance": 1, "below": 0.4,
         }
         self.modal = ["[GC:G0 G54 G21 G90 G94 M5]"]
 
@@ -55,18 +55,18 @@ class SurfaceTests(unittest.TestCase):
         self.start()
         self.receive("[PRB:0,0,5:1]\nok\n<Idle|MPos:0,0,4.997|Pn:P>\n")
         self.assertIn(b"G10L20P1Z-0.0030\n", self.port.writes)
-        self.receive("ok\nok\n<Idle|MPos:0,0,7|WCO:0,0,5>\n")
+        self.receive("ok\nok\n<Idle|MPos:0,0,6|WCO:0,0,5>\n")
         self.assertEqual(self.cnc.surface.state, "xy_ack")
 
     def sample(self, point, height):
         x, y = point["x"], point["y"]
-        self.receive(f"ok\n<Idle|MPos:{x},{y},7|WCO:0,0,5>\n")
+        self.receive(f"ok\n<Idle|MPos:{x},{y},6|WCO:0,0,5>\n")
         self.assertEqual(self.cnc.surface.state, "probing")
         z = 5 + height
         self.receive(f"[PRB:{x},{y},{z}:1]\nok\n"
                      f"<Idle|MPos:{x},{y},{z - 0.002}|Pn:P>\n")
         self.assertEqual(self.cnc.surface.state, "retract_ack")
-        self.receive(f"ok\n<Idle|MPos:{x},{y},7|WCO:0,0,5>\n")
+        self.receive(f"ok\n<Idle|MPos:{x},{y},6|WCO:0,0,5>\n")
 
     def complete(self):
         self.reference()
@@ -84,7 +84,7 @@ class SurfaceTests(unittest.TestCase):
         self.assertEqual(surface.job_id, self.cnc.jobs.job_id)
         self.assertEqual(sum(b"G38.2" in v for v in self.port.writes), 10)
         self.assertEqual(sum(b"G10" in v for v in self.port.writes), 1)
-        self.assertEqual(sum(b"G0Z2" in v for v in self.port.writes), 10)
+        self.assertEqual(sum(b"G0Z1" in v for v in self.port.writes), 10)
         self.assertAlmostEqual(surface.samples[-1]["z"], 0.3)
         self.assertFalse(self.port.closed)
         self.assertFalse(any(b"M3" in v for v in self.port.writes))
@@ -127,6 +127,22 @@ class SurfaceTests(unittest.TestCase):
             self.assertFalse(self.cnc.surface.valid)
             self.assertTrue(self.port.closed)
 
+    def test_probe_travel_cap_rejects_reference_and_grid_overruns(self):
+        for change in ({"distance": 1.401}, {"clearance": 1.1},
+                       {"below": 0.401}):
+            original = self.payload
+            self.payload = {**original, **change}
+            with self.assertRaises(ValueError):
+                self.start()
+            self.payload = original
+            self.assertEqual(self.port.writes, [])
+
+    def test_position_rounding_cannot_extend_probe_beyond_1_4_mm(self):
+        self.reference()
+        self.receive("ok\n<Idle|MPos:0,0,6.009|WCO:0,0,5>\n")
+        self.assertIn(b"G90G38.2Z-0.3910F20\n", self.port.writes)
+        self.assertLessEqual(self.cnc.surface.distance, 1.4 + 1e-9)
+
     def test_completed_map_invalidates_after_offset_or_disconnect(self):
         surface = self.complete()
         self.cnc._accept_status("<Idle|MPos:10,10,7|WCO:0,0,5.1>")
@@ -138,7 +154,7 @@ class SurfaceTests(unittest.TestCase):
     def test_reference_offset_must_match_captured_contact(self):
         self.start()
         self.receive("[PRB:0,0,5:1]\nok\n<Idle|MPos:0,0,4.997|Pn:P>\n")
-        self.receive("ok\nok\n<Idle|MPos:0,0,8|WCO:0,0,6>\n")
+        self.receive("ok\nok\n<Idle|MPos:0,0,7|WCO:0,0,6>\n")
         self.assertEqual(self.cnc.surface.state, "failed")
         self.assertFalse(self.cnc.surface.valid)
         self.assertFalse(any(b"G1X" in value for value in self.port.writes))

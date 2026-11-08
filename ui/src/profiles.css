@@ -1,0 +1,43 @@
+.profile-bar{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;min-width:0;font-size:10px;color:var(--muted)}
+.profile-bar label{display:flex;align-items:center;gap:5px;font-weight:600}
+.compact .profile-bar select{min-height:28px;height:28px;max-width:180px;padding:2px 24px 2px 6px;font-size:11px;background:var(--surface,#fff);border:1px solid var(--border);border-radius:3px;color:var(--ink)}
+.profile-bar>span{font-family:ui-monospace,monospace;overflow-wrap:anywhere}
+.profile-builder{border:1px solid var(--border);border-radius:4px;padding:10px;font-size:11px}
+.profile-builder>summary{cursor:pointer;font-weight:650;list-style-position:inside}
+.profile-builder>summary span{float:right;color:var(--muted);font-weight:400}
+.profile-builder[open]>summary{margin-bottom:10px}
+.profile-form{display:flex;flex-direction:column;gap:10px;margin:10px 0}
+.profile-form>label{display:flex;flex-direction:column;gap:4px}
+.profile-trials{max-height:250px;overflow:auto}
+.profile-trial{display:grid;grid-template-columns:minmax(0,1fr) 110px;gap:8px;align-items:center;border-bottom:1px solid var(--border);padding:7px 0}
+.profile-trial>label:first-child{display:flex;align-items:center;gap:7px}
+.profile-trial strong,.profile-trial small{display:block;font-size:10px;line-height:1.5}
+.profile-trial small{color:var(--muted)}
+.profile-measure{font-size:9px;display:flex;flex-direction:column;gap:3px}
+.profile-measure input{width:100%;min-width:0}
+.profile-list>details{border-top:1px solid var(--border);padding:9px 0}
+.profile-list summary{cursor:pointer;font-weight:600;overflow-wrap:anywhere}
+.profile-formula{font:12px ui-monospace,monospace}
+.profile-row-actions{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.profile-from-history{border-top:1px solid var(--border);padding:9px 0}
+.profile-from-history>summary{cursor:pointer;color:var(--muted)}
+.profile-saved{margin:0;padding:8px;border:1px solid var(--border);background:var(--selected);font-size:11px;line-height:1.5;color:var(--ink)}
+.profile-list .button-row{margin-top:8px}
+.file-profile{padding:8px;border:1px solid var(--border);border-radius:4px;font-size:11px;line-height:1.5;margin:8px 0}
+.parameter-field{display:flex;flex-direction:column;gap:5px;font-size:11px;min-width:0}
+.parameter-field input,.parameter-field select{width:100%;min-width:0;min-height:32px}
+.parameter-field small{color:var(--muted);font-size:10px;line-height:1.45;font-weight:400}
+.profile-parameter-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.profile-toolbar{display:flex;flex-wrap:wrap;gap:7px}
+.profile-settings{display:flex;flex-direction:column;gap:9px}
+.profile-choice select{font-weight:600}
+.compact .profile-subtabs{display:flex;gap:3px;border-bottom:1px solid var(--border);padding:0;align-items:flex-end}
+.compact .profile-subtabs button{flex:0 1 50%;min-width:110px;justify-content:center;min-height:34px;padding:7px 15px;margin-bottom:-1px;border:1px solid var(--border);border-radius:6px 6px 0 0;background:#eae9e3;color:var(--muted);outline:none;box-shadow:none;font-weight:500}
+.compact .profile-subtabs button:hover:not(:disabled){background:#e2e1da;border-color:var(--border);color:var(--ink)}
+.compact .profile-subtabs button[aria-selected=true],.compact .profile-subtabs button[aria-selected=true]:hover:not(:disabled){background:var(--surface);border-color:var(--border);border-bottom-color:var(--surface);color:var(--ink);font-weight:700;outline:none;box-shadow:none}
+.compact .profile-subtabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-4px}
+#profile-content{display:flex;flex-direction:column;gap:12px}
+.profile-test-conditions{margin:0;font-size:11px;line-height:1.5;color:var(--muted)}
+.service-spindle>.parameter-field{grid-column:1/-1}
+@media(max-width:450px){.profile-parameter-grid{gap:10px}.parameter-field{font-size:10px}.parameter-field small{font-size:9px}}
+@media(max-width:760px){.compact .station-notice{flex-wrap:wrap}.compact .station-notice .profile-bar{flex:1 0 100%;order:5}.profile-bar label{flex-shrink:0}.profile-bar>span{font-size:9px}.profile-trial{grid-template-columns:minmax(0,1fr) 90px}}

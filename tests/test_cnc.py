@@ -8,7 +8,8 @@
 import unittest
 import time
 
-from monitor.cnc import Controller, manual_command, parse_status
+from monitor.cnc import manual_command, parse_status
+from controller_fixture import Controller
 
 
 class FakePort:
@@ -108,7 +109,7 @@ class CncTests(unittest.TestCase):
         for action in ("home", "reset", "unlock", "start", "G0 X50"):
             with self.assertRaises(ValueError):
                 manual_command(action, {})
-        for distance in (0, 11, float("nan"), float("inf")):
+        for distance in (0, 301, float("nan"), float("inf")):
             with self.assertRaises(ValueError):
                 manual_command("jog", {
                     "axis": "X", "distance": distance, "feed": 100,
@@ -128,6 +129,23 @@ class CncTests(unittest.TestCase):
         self.assertEqual(cnc.status()["position"], [9, 18, 27])
         cnc._status()
         self.assertEqual(cnc.status()["position"], [10, 20, 30])
+
+    def test_custom_jog_distance_and_axis_limits(self):
+        self.assertEqual(manual_command("jog", {
+            "axis": "X", "distance": 2.5, "feed": 75,
+        }), "$J=G91 G21 X2.5 F75")
+        self.assertEqual(manual_command("jog", {
+            "axis": "Y", "distance": -25, "feed": 100,
+        }), "$J=G91 G21 Y-25 F100")
+        for axis, distance in (("Z", 10.01), ("Y", 180.01),
+                               ("X", 300.01), ("X", .001)):
+            with self.assertRaises(ValueError):
+                manual_command("jog", {"axis": axis,
+                                       "distance": distance, "feed": 100})
+        cnc = Controller()
+        self.assertEqual(cnc.status()["jog_limits_mm"],
+                         {"X": 300, "Y": 180, "Z": 10})
+        self.assertIsNone(cnc.status()["geometry_model"]["correction"])
 
     def test_unknown_position_is_not_zero(self):
         cnc = Controller()

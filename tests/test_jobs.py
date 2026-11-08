@@ -9,7 +9,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from monitor.cnc import Controller
+from controller_fixture import Controller
 from monitor.jobs import parse_program
 
 

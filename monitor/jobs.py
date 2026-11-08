@@ -42,11 +42,20 @@ def parse_program(name, content):
     max_feed = 0
     max_power = 0
     z_feeds = set()
+    cam_profile = None
     for number, raw in enumerate(content.splitlines(), 1):
         if not raw.isascii() or any(
             ord(char) < 32 and char != "\t" for char in raw
         ):
             raise ValueError(f"Linia {number}: wymagany tekst ASCII.")
+        if "BARK_BEETLE_PROFILE" in raw:
+            match = re.fullmatch(
+                r"; BARK_BEETLE_PROFILE ([0-9a-f]{16}) ([0-9a-f]{64})",
+                raw.strip(),
+            )
+            if match is None or cam_profile is not None or lines:
+                raise ValueError("Niepoprawny nagłówek profilu CAM.")
+            cam_profile = {"id": match[1], "fingerprint": match[2]}
         raw = raw.split(";", 1)[0]
         raw = re.sub(r"\([^()]*\)", "", raw)
         if "(" in raw or ")" in raw:
@@ -162,7 +171,7 @@ def parse_program(name, content):
             raise ValueError(f"Zakres {axis} przekracza limit ±{maximum} mm.")
     return {"name": name, "lines": lines, "bounds_mm": bounds,
             "max_feed": max_feed, "max_power": max_power,
-            "z_feeds": sorted(z_feeds)}
+            "z_feeds": sorted(z_feeds), "cam_profile": cam_profile}
 
 
 class JobRunner:
@@ -287,7 +296,10 @@ class JobRunner:
                 "max_feed": program["max_feed"] if program else None,
                 "max_power": program["max_power"] if program else None,
                 "compensated": bool(program and program.get("compensated")),
+                "tool_geometry": program.get("tool_geometry")
+                if program else None,
                 "xy_feed": program.get("xy_feed") if program else None,
+                "cam_profile": program.get("cam_profile") if program else None,
                 "z_feeds": self.program.get("z_feeds", [])
                 if self.program else [],
             }

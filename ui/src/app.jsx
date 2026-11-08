@@ -5,6 +5,14 @@ import {createController} from './controller.js';
 import {SurfacePreview} from './SurfacePlan.jsx';
 import {surfaceMatches} from './surface-plan.js';
 import {FilePanel} from './FilePanel.jsx';
+import {ServicePanel} from './ServicePanel.jsx';
+import {JogPanel} from './JogPanel.jsx';
+import {ProfileBar} from './Profiles.jsx';
+import {ProfilePanel} from './ProfilePanel.jsx';
+import {ZeroPanel} from './ZeroPanel.jsx';
+import {probeBlockReason} from './probe-ready.js';
+import {ParameterField} from './ParameterField.jsx';
+import {toolDiameter} from './service-geometry.js';
 import './style.css';
 import './probe.css';
 import './compact.css';
@@ -13,7 +21,7 @@ import {InstallApp} from './InstallApp.jsx';
 
 const controller = createController();
 attachAppLifecycle(controller);
-const tabs = [{id: 'move', label: 'Ruch', icon: IconArrowsMove}, {id: 'zero', label: 'Zero', icon: IconFocus2}, {id: 'file', label: 'Plik', icon: IconFileCode}, {id: 'spindle', label: 'Wrzeciono', icon: IconTool}];
+const tabs = [{id: 'move', label: 'Ruch', icon: IconArrowsMove}, {id: 'zero', label: 'Zero', icon: IconFocus2}, {id: 'file', label: 'Plik', icon: IconFileCode}, {id: 'spindle', label: 'Wrzeciono', icon: IconTool}, {id: 'service', label: 'Serwis', icon: IconSettings}, {id:'profiles',label:'Profile',icon:IconSettings}];
 const machineNames = {Idle: 'Bezczynne', Run: 'Praca', Jog: 'Ruch ręczny', Alarm: 'Alarm'};
 const jobNames = {ready: 'Gotowy plik', running: 'Praca', draining: 'Kończenie ruchu', pausing: 'Zatrzymywanie', paused: 'Pauza', resuming: 'Wznawianie', completed: 'Zakończono', stopped: 'Przerwano', failed: 'Błąd'};
 
@@ -33,7 +41,7 @@ function Header({onRequest}) {
     <section class="positions" aria-label="Pozycja względem zera materiału"><p>Pozycja (G54)</p><div class="axes">{['X','Y','Z'].map((axis,index) => <div key={axis}><strong>{axis}</strong><output id={`position-${axis}`}>{controller.known.value && cnc.connected && cnc.fresh && Number.isFinite(cnc.position?.[index]) ? cnc.position[index].toFixed(3) : '—'}</output><small>mm</small></div>)}</div></section>
     <div class="environment" aria-label="Warunki otoczenia"><div><span>Temperatura</span><strong><IconTemperature size={21} aria-hidden="true"/>{!controller.offline.value && environment?.ok ? `${environment.temperature_c.toFixed(1)} °C` : '—'}</strong></div><div><span>Wilgotność</span><strong><IconDroplet size={21} aria-hidden="true"/>{!controller.offline.value && environment?.ok ? `${environment.humidity_percent.toFixed(1)} %` : '—'}</strong></div><div id="probe-indicator" class={`probe-indicator ${probeContact === true ? 'contact' : probeContact === false ? 'open' : 'unavailable'}`} role="status" aria-live="polite" aria-atomic="true" title="Stan logiczny wejścia PROBE raportowany przez sterownik. Zwarcie krokodylków powinno zmieniać wskazanie."><IconFocus2 size={22} aria-hidden="true"/><span>PROBE</span><strong>{probeLabel}</strong></div></div>
     <div class="header-actions"><Button id="connect-cnc" class="connect" icon={IconPlugConnected} title={cnc.connected ? 'Rozłącz CNC' : 'Połącz CNC'} aria-label={cnc.connected ? 'Rozłącz CNC' : 'Połącz CNC'} disabled={!controller.connectReady.value} onClick={() => onRequest(cnc.connected ? 'disconnect' : 'connect')}>{controller.pending.value === 'connect' ? 'Łączenie…' : controller.pending.value === 'disconnect' ? 'Rozłączanie…' : cnc.connected ? 'Rozłącz' : 'Połącz'}</Button><Button id="top-job-stop" class="stop" icon={IconPlayerStop} disabled={!controller.known.value || !controller.active.value} title={controller.active.value ? 'Przerwij aktywne zadanie lub pomiar' : 'Brak aktywnego zadania do przerwania'} onClick={() => controller.send({action: controller.probing.value ? 'probe_stop' : 'job_stop'},true)}>Stop</Button></div>
-    <section id="station-notice" class={`station-notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'} aria-live={notice.tone === 'error' ? 'assertive' : 'polite'} aria-atomic="true"><IconInfoCircle size={23} aria-hidden="true"/><p>{notice.text}</p>{notice.dismissible && <button type="button" class="text-button" onClick={controller.acknowledge}>Rozumiem</button>}<button type="button" class="text-button details-toggle" aria-label="Szczegóły stanu stanowiska" aria-expanded={details} aria-controls="station-details" onClick={() => setDetails(!details)}>Szczegóły {details ? <IconChevronUp size={17}/> : <IconChevronDown size={17}/>}</button></section>
+    <section id="station-notice" class={`station-notice ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'} aria-live={notice.tone === 'error' ? 'assertive' : 'polite'} aria-atomic="true"><IconInfoCircle size={23} aria-hidden="true"/><p>{notice.text}</p><ProfileBar controller={controller} cnc={cnc}/>{notice.dismissible && <button type="button" class="text-button" onClick={controller.acknowledge}>Rozumiem</button>}<button type="button" class="text-button details-toggle" aria-label="Szczegóły stanu stanowiska" aria-expanded={details} aria-controls="station-details" onClick={() => setDetails(!details)}>Szczegóły {details ? <IconChevronUp size={17}/> : <IconChevronDown size={17}/>}</button></section>
     {details && <section id="station-details" class="station-details"><p>Odczyt CNC: {cnc.fresh ? 'aktualny' : 'nieaktualny'} · Kamera: {status?.camera?.ok ? 'dostępna' : 'niedostępna'} · Czujnik: {environment?.ok ? `odczyt sprzed ${environment.age_seconds?.toFixed(1)} s` : 'brak odczytu'}</p><InstallApp/><ol>{controller.events.value.length ? controller.events.value.map(event => <li><time>{event.time}</time>{event.text}</li>) : <li>Brak zdarzeń w tej sesji przeglądarki.</li>}</ol></section>}
   </header>;
 }
@@ -62,13 +70,15 @@ function App() {
   const [fileFeed, setFileFeed] = useState('100');
   const [originalFeed, setOriginalFeed] = useState(true);
   const [step, setStep] = useState(0.1);
-  const [feed, setFeed] = useState('100');
+  const [customStep, setCustomStep] = useState('');
+  const [feed, setFeed] = useState('300');
   const [power, setPower] = useState('300');
   const [probeDistance, setProbeDistance] = useState('1');
   const [probeFeed, setProbeFeed] = useState('20');
   const [request, setRequest] = useState(null);
   const [surfaceSettings, setSurfaceSettings] = useState(null);
   const [useSurfaceMap, setUseSurfaceMap] = useState(true);
+  const [useServiceDepth, setUseServiceDepth] = useState(false);
   const inputRef = useRef();
   const opener = useRef();
   const cnc = controller.cnc.value;
@@ -79,17 +89,30 @@ function App() {
   const bounds = job.bounds_mm;
   const fileFeedValid = Number.isFinite(Number(fileFeed)) && Number(fileFeed) >= 1 && Number(fileFeed) <= 300;
   const surfaceReady = cnc.surface_map?.valid && surfaceMatches(cnc.surface_map, job.id, surfaceSettings, bounds);
-  const probeValid = Number.isFinite(Number(probeDistance)) && Number(probeDistance) >= 0.1 && Number(probeDistance) <= 5 && Number.isFinite(Number(probeFeed)) && Number(probeFeed) >= 10 && Number(probeFeed) <= 60;
-  const probeReady = manual && cnc.probe_tested && cnc.probe_triggered === false && probeValid && Array.isArray(cnc.position) && cnc.position.length === 3 && cnc.position.every(Number.isFinite);
+  const probeReason = probeBlockReason({cnc,known:controller.known.value,pending:controller.pending.value,active:controller.active.value,distance:probeDistance,feed:probeFeed});
+  const probeReady = !probeReason;
   useEffect(() => {setSurfaceSettings(null);setUseSurfaceMap(true);setOriginalFeed(true);setFileFeed(String(job.max_feed || 100));setJobPhase('cut');}, [job.id]);
   useEffect(() => {if (cnc.z_probe?.active && cnc.z_probe.kind === 'surface') setJobPhase('prepare'); else if (cnc.z_probe?.state === 'completed' && cnc.z_probe.kind === 'surface') setJobPhase('cut');}, [cnc.z_probe?.active, cnc.z_probe?.state]);
   useEffect(() => {controller.start(); return controller.stop;}, []);
+  useLayoutEffect(() => {const scroll=document.querySelector('.tool-scroll');if(scroll) scroll.scrollTop=0;}, [tab]);
+  useEffect(() => {setOriginalFeed(true);setUseServiceDepth(false);}, [cnc.calibration_profiles?.selected?.fingerprint]);
   function ask(action, extra = {}) {
     if (request) return;
+    if (action === 'job_start') {
+      const profile = cnc.calibration_profiles?.selected;
+      const matches = profile?.model ? job.cam_profile?.id === profile.id && job.cam_profile?.fingerprint === profile.fingerprint : !job.cam_profile;
+      if (!matches) {controller.error('Plik NC nie odpowiada aktywnemu profilowi. Wygeneruj CAM na PC albo wybierz profil zgodny z plikiem.');return;}
+    }
     if (action === 'job_start' && !originalFeed && !fileFeedValid) return;
     const id = job.id;
     const payload = {action, ...extra};
     const definitions = {
+      profile_test_finish: ['Powtórzyć przejazd wykańczający?', `Profil: ${cnc.calibration_profiles?.selected?.name}. Ta sama głębokość ${extra.depth} mm, ten sam tor i zapisana kompensacja Z. Bez dodatkowego pogłębiania.\n\nPotwierdzasz, że laminat, mocowanie, narzędzie i zero nie zostały zmienione. Usuń opiłki przy zatrzymanym wrzecionie, zdejmij krokodylek i usuń przewody z pola pracy. Program ponownie uruchomi wrzeciono i wykona jeden przejazd. Pozostań przy fizycznym wyłączniku.`, 'Wykonaj jeden przejazd', () => controller.manualReady.value && controller.cnc.value.calibration?.repeat?.available && controller.cnc.value.calibration?.repeat?.id === extra.repeat_id],
+      profile_delete: ['Usunąć profil?', `Profil „${extra.name}” zostanie usunięty z listy. Jeśli jest wybrany, aplikacja przełączy się na Domyślny. Pliki CAM przygotowane dla usuniętego profilu nie będą zgodne z nowym wyborem.`, 'Usuń profil', () => controller.known.value && !controller.active.value && (!controller.cnc.value.connected || controller.manualReady.value)],
+      profile_test_prepare: ['Zmierzyć 9 punktów testu profilu?', `Profil: ${cnc.calibration_profiles?.selected?.name}. Obszar ${Number(extra.area_width).toFixed(2)} × ${Number(extra.area_height).toFixed(2)} mm. ${extra.new_session ? 'Początek: aktualne X/Y.' : 'Kolejne świeże pole w Y.'}\n\nSiatka 3×3. Istniejące Z=0 pozostaje bez zmian. Prześwit Z=1 mm, sondowanie do Z=−0,4 mm, F20; maksymalny zjazd 1,4 mm. Wyłącz wrzeciono, sprawdź sondę i świeżą miedź pod całym polem. Frezowanie wymaga osobnego potwierdzenia.`, 'Zmierz 9 punktów', () => controller.manualReady.value && controller.cnc.value.probe_tested && controller.cnc.value.probe_triggered === false],
+      profile_test_cut: ['Wykonać test wybranego profilu?', `Profil: ${cnc.calibration_profiles?.selected?.name}. Stałe zagłębienie ${extra.depth} mm, XY ${extra.feed}, Z ${extra.plunge} mm/min, wrzeciono S${extra.power}.\n\nPaski 10 mm o szerokościach 0,3 / 0,5 / 1 mm oraz ośmiokąty o przekątnych 1 i 2 mm. Tylko rowki izolacyjne. Aktualna mapa 9 punktów Z zostanie uwzględniona. Zdejmij krokodylek i przewód z pola pracy. Pozostań przy fizycznym wyłączniku.`, 'Frezuj test profilu', () => controller.manualReady.value && controller.cnc.value.calibration?.mode === 'profile_test' && controller.cnc.value.calibration?.map?.valid && controller.cnc.value.calibration?.session === extra.session],
+      service_prepare: ['Zmierzyć pole serwisowe?', `Pomiar 5 punktów: cztery rogi i środek pola 12 × 5 mm. ${extra.new_session ? 'Początek: aktualne X/Y.' : 'Kolejne pole: +6,5 mm w Y od poprzedniego.'}\n\nZ=0 pozostanie bez zmian. Najpierw przejazd do Z=1 mm, potem przejazdy i sondowanie do Z=−0,4 mm z F20. Każdy zjazd sondy: maks. 1,4 mm. Zapewnij prześwit, świeżą miedź na całym polu i wyłącz wrzeciono. Sprawdź przewód sondy. Po pomiarze wykonanie próbki wymaga osobnego potwierdzenia.`, 'Zmierz 5 punktów', () => controller.manualReady.value && controller.cnc.value.probe_tested && controller.cnc.value.probe_triggered === false],
+      service_cut: ['Wykonać próbkę serwisową?', `Zagłębienie ${extra.depth} mm pod lokalną powierzchnię. Pasek nominalnie ${extra.width} mm; rowek i pasek długości 10 mm. Posuw X/Y: ${extra.feed} mm/min, zagłębianie Z: ${extra.plunge} mm/min, wrzeciono S${extra.power} (nie pomiar RPM).\n\nZdejmij krokodylek z frezu i usuń przewód z pola ruchu. Mapa Z jest uwzględniona, istniejące zero pozostaje bez zmian. Pole zostanie oznaczone jako wykorzystane. Pozostań przy fizycznym wyłączniku.`, 'Wykonaj próbkę', () => controller.manualReady.value && controller.cnc.value.calibration?.map?.valid && controller.cnc.value.calibration?.session === extra.session],
       connect: ['Połączyć CNC?', 'Upewnij się, że frezarka stoi, wrzeciono jest wyłączone i jesteś przy stanowisku. Otwarcie USB może zresetować sterownik.', 'Połącz CNC', () => controller.connectReady.value && !controller.cnc.value.connected],
       disconnect: ['Rozłączyć CNC?', 'Frezarka musi być bezczynna, a wrzeciono fizycznie wyłączone. Rozłączenie USB samo nie zatrzymuje wrzeciona.', 'Rozłącz CNC', () => controller.manualReady.value],
       job_start: ['Uruchomić program?', `${job.name}\n\nPosuw XY: ${originalFeed ? 'według pliku' : `${fileFeed} mm/min`}. Zagłębianie Z i rampy: według pliku.\n${surfaceReady && useSurfaceMap ? 'Kompensacja Z: aktualna mapa powierzchni.' : 'Program BEZ kompensacji powierzchni Z.'}\nSprawdź narzędzie, zakres, mocowania, zero materiału i prześwit. Usuń krokodylek z frezu. Program może uruchomić wrzeciono. Pozostań przy wyłączniku.`, 'Uruchom program', () => controller.manualReady.value && controller.job.value.id === id],
@@ -102,9 +125,17 @@ function App() {
     };
     const definition = definitions[action];
     if (!definition) return;
+    if (action.startsWith('service_') || action.startsWith('profile_test_')) payload.confirmed = true;
+    if (action === 'profile_delete') payload.confirmed = true;
+    if (action === 'service_cut') definition[1] += `\nFrez: końcówka ${extra.tip} mm, kąt całkowity ${extra.angle}°. Rowek teoretyczny bez korekt profilu: ${(extra.predicted_diameter ?? toolDiameter(extra.tip, extra.angle, extra.depth)).toFixed(3)} mm.`;
     if (action.startsWith('job_')) Object.assign(payload, {job_id: id, confirmed: true});
     if (action === 'job_start' && surfaceReady && useSurfaceMap) payload.surface_map_id = cnc.surface_map.id;
     if (action === 'job_start' && !originalFeed) payload.xy_feed = Number(fileFeed);
+    if (action === 'job_start' && useServiceDepth && cnc.calibration?.profile) {
+      payload.service_depth = true;
+      payload.expected_depth = cnc.calibration.profile.depth;
+      definition[1] += `\nProfil serwisowy: głębokość ${cnc.calibration.profile.depth} mm. Tylko pliki z jednym poziomem cięcia, bez ramp.`;
+    }
     if (action === 'surface_start') {Object.assign(payload, {job_id:id, confirmed:true, position:[...cnc.position]});setUseSurfaceMap(true);}
     if (action === 'spindle_on') {if (!powerValid) return; payload.power = Number(power);}
     if (action === 'probe_start') {if (!probeReady) return; Object.assign(payload, {confirmed: true, distance: Number(probeDistance), feed: Number(probeFeed), position: [...cnc.position]});}
@@ -119,7 +150,6 @@ function App() {
     catch (cause) {controller.error(`Nie wczytano pliku: ${cause.message}`);}
     finally {if (inputRef.current) inputRef.current.value = '';}
   }
-  function move(axis, direction) {controller.send({action: 'jog', axis, distance: step * direction, feed: Number(feed)});}
   function tabKey(event, index) {
     let next;
     if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (index + 1) % tabs.length;
@@ -131,10 +161,13 @@ function App() {
   }
   return <main class={`shell compact phase-${jobPhase}`}><Header onRequest={ask}/><div class="workspace"><nav class="tabs" role="tablist" aria-label="Narzędzia operatora">{tabs.map((item,index) => <button id={`tab-${item.id}`} role="tab" type="button" aria-selected={tab === item.id} aria-controls={`tool-${item.id}`} tabIndex={tab === item.id ? 0 : -1} onClick={() => setTab(item.id)} onKeyDown={event => tabKey(event,index)}><item.icon size={20} aria-hidden="true"/><span>{item.label}</span></button>)}</nav><section class="operator panel">
     <div class="tool-scroll"><section id={`tool-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`} tabIndex={0}>
-    {tab === 'move' && <><h2>Ręczne przesuwanie</h2><fieldset disabled={!manual}><div class="motion-settings"><div><label>Krok</label><div class="step-options">{[0.1,1,10].map(value => <label><input type="radio" name="step" value={value} checked={step === value} onChange={() => setStep(value)}/><span>{String(value).replace('.',',')} mm</span></label>)}</div></div><label>Prędkość · mm/min<input id="jog-feed" type="number" min="1" max="300" value={feed} onInput={event => setFeed(event.currentTarget.value)}/></label></div><div class="jog-controls"><div class="xy-pad"><Button class="up" onClick={() => move('Y',1)}>Y +</Button><Button class="left" onClick={() => move('X',-1)}>X −</Button><span>X / Y</span><Button class="right" onClick={() => move('X',1)}>X +</Button><Button class="down" onClick={() => move('Y',-1)}>Y −</Button></div><div class="z-pad"><Button onClick={() => move('Z',1)}>Z +</Button><span>Oś Z</span><Button onClick={() => move('Z',-1)}>Z −</Button></div></div></fieldset><Button id="cancel-jog" class="stop" icon={IconPlayerStop} disabled={!controller.known.value || !cnc.connected || controller.active.value} onClick={() => controller.send({action: 'jog_cancel'},true)}>Przerwij ruch</Button><p class="hint">Bez krańcówek: pilnuj końca zakresu. Zacznij od 0,1 mm.</p></>}
-    {tab === 'zero' && <><h2>Zero materiału</h2><p class="hint">Ręcznie: ustaw narzędzie w punkcie odniesienia. Dla Z uwzględnij grubość papieru.</p><div class="button-row"><Button disabled={!manual} onClick={() => ask('zero_xy')}>Zero X / Y</Button><Button disabled={!manual} onClick={() => ask('zero_z')}>Zero Z ręcznie</Button></div><section class="zero-probe" aria-labelledby="zero-probe-title"><h3 id="zero-probe-title">Automatyczne zero Z</h3><p>Dotyk frezu bezpośrednio do miedzi PCB. Bez dodatkowej płytki pomiarowej.</p><p class="probe-check">{cnc.probe_tested ? 'Wejście wykryło styk. Przed startem rozewrzyj krokodylki.' : 'Najpierw zewrzyj krokodylki, sprawdź STYK w nagłówku i rozewrzyj je. Test jest wymagany po każdym połączeniu CNC.'}</p><fieldset disabled={!manual}><div class="probe-inputs"><label>Maks. zjazd Z · mm<input id="probe-distance" type="number" min="0.1" max="5" step="0.1" value={probeDistance} onInput={event => setProbeDistance(event.currentTarget.value)}/></label><label>Posuw · mm/min<input id="probe-feed" type="number" min="10" max="60" step="1" value={probeFeed} onInput={event => setProbeFeed(event.currentTarget.value)}/></label></div></fieldset><Button id="probe-start" class="primary" icon={IconFocus2} disabled={!probeReady} onClick={() => ask('probe_start')}>Ustaw zero Z sondą</Button><Button id="probe-stop" class="stop" icon={IconPlayerStop} disabled={!controller.known.value || !controller.probing.value} onClick={() => controller.send({action: 'probe_stop'},true)}>Przerwij sondę</Button><p class="hint">Wrzeciono wyłączone. Ustaw frez blisko nad miedzią i zapewnij 1 mm miejsca na odsunięcie w górę. Po sukcesie Z=1 mm; przed włączeniem wrzeciona zdejmij krokodylek z narzędzia.</p></section></>}
+    {tab === 'move' && <JogPanel controller={controller} cnc={cnc} step={step} onStep={setStep} customStep={customStep} onCustomStep={setCustomStep} feed={feed} onFeed={setFeed}/>}
+    {tab === 'zero' && <ZeroPanel controller={controller} cnc={cnc} ask={ask} distance={probeDistance} onDistance={setProbeDistance} feed={probeFeed} onFeed={setProbeFeed} reason={probeReason}/>}
     {tab === 'file' && <FilePanel controller={controller} job={job} cnc={cnc} free={free} manual={manual} request={request} inputRef={inputRef} upload={upload} phase={jobPhase} onPhase={setJobPhase} fileFeed={fileFeed} onFeed={setFileFeed} originalFeed={originalFeed} onOriginal={setOriginalFeed} feedValid={fileFeedValid} surfaceReady={surfaceReady} surfaceSettings={surfaceSettings} onSurfaceSettings={setSurfaceSettings} useMap={useSurfaceMap} onUseMap={setUseSurfaceMap} ask={ask}/>}
-    {tab === 'spindle' && <><h2>Wrzeciono</h2><label for="spindle-range" class="slider-label">S wrzeciona · 1–1000</label><div class="spindle-setting"><input id="spindle-range" type="range" min="1" max="1000" step="1" value={powerValid ? power : 1} disabled={!manual} onInput={event => setPower(event.currentTarget.value)}/><input id="spindle-power" type="number" aria-label="Wartość S wrzeciona" min="1" max="1000" step="1" value={power} disabled={!manual} onInput={event => setPower(event.currentTarget.value)}/></div><p class="hint">Skala sterownika, nie pomiar RPM.</p><div class="button-row spindle-actions"><Button class="primary" icon={IconPlayerPlay} disabled={!manual || !powerValid} onClick={() => ask('spindle_on')}>Włącz</Button><Button icon={IconPlayerStop} disabled={!manual} onClick={() => controller.send({action: 'spindle_off'})}>Wyłącz</Button></div><p class="hint">Wartość zostanie wysłana po kliknięciu Włącz.</p></>}
+    {tab === 'profiles' && <ProfilePanel controller={controller} cnc={cnc} ask={ask}/>}
+    {tab === 'service' && <ServicePanel controller={controller} cnc={cnc} ask={ask}/>}
+    {tab === 'file' && job.id && cnc.calibration?.profile && !cnc.calibration_profiles?.selected?.model && <label class="service-check"><input id="file-service-depth" type="checkbox" disabled={!free || !!request} checked={useServiceDepth} onChange={event => setUseServiceDepth(event.currentTarget.checked)}/>Użyj zagłębienia z Serwisu: {cnc.calibration.profile.depth.toFixed(2)} mm · jeden poziom cięcia, bez ramp</label>}
+    {tab === 'spindle' && <><h2>Wrzeciono</h2><ParameterField id="spindle-power" label="Ustawienie wrzeciona · S" value={power} onChange={setPower} options={[100,200,300,400,500,600,700,800,900,1000]} min={1} max={1000} disabled={!manual} format={v=>`S${v} · ${v/10}%`} help="S1000 to pełna skala sterownika; S300 to 30%. To nie jest pomiar obrotów RPM."/><input id="spindle-range" type="range" aria-label="Ustawienie wrzeciona suwakiem" min="1" max="1000" step="1" value={powerValid ? power : 1} disabled={!manual} onInput={event => setPower(event.currentTarget.value)}/><div class="button-row spindle-actions"><Button class="primary" icon={IconPlayerPlay} disabled={!manual || !powerValid} onClick={() => ask('spindle_on')}>Włącz</Button><Button icon={IconPlayerStop} disabled={!manual} onClick={() => controller.send({action: 'spindle_off'})}>Wyłącz</Button></div><p class="hint">Zmiana listy lub suwaka nie włącza wrzeciona. Ustawienie jest wysyłane po kliknięciu Włącz.</p></>}
     </section></div></section><aside class="machine-preview"><Camera/>{tab === 'file' && jobPhase === 'cut' && <SurfacePreview job={job} map={surfaceReady ? cnc.surface_map : null}/>}</aside>{tab === 'file' && <div class="job-actions"><div class="job-progress"><div class="progress-label"><span>Postęp</span><span>{job.acknowledged || 0} / {job.total || 0}</span></div><progress id="job-progress" max={job.total || 1} value={job.acknowledged || 0} aria-label="Polecenia przyjęte przez sterownik"/>{controller.active.value && <small>Posuw XY: {job.xy_feed ? job.xy_feed + ' mm/min' : 'według pliku'}</small>}</div><div class="execution-buttons"><Button id="job-start" class="primary" icon={IconPlayerPlay} disabled={!manual || !job.id || jobPhase !== 'cut' || (!originalFeed && !fileFeedValid)} title={!manual ? 'Start wymaga połączonego CNC w stanie bezczynności' : jobPhase !== 'cut' ? 'Przejdź do Frezowania' : 'Start po potwierdzeniu parametrów'} onClick={() => ask('job_start')}>{controller.pending.value === 'job_start' ? 'Uruchamianie…' : 'Start frezowania'}</Button><Button id="job-pause" title={controller.active.value ? 'Pauza nie wyłącza wrzeciona' : 'Pauza dostępna podczas pracy programu'} icon={job.state === 'paused' ? IconPlayerPlay : IconPlayerPause} disabled={!controller.known.value || !cnc.connected || !cnc.fresh || !['running','draining','paused'].includes(job.state)} onClick={() => job.state === 'paused' ? ask('job_resume') : controller.send({action: 'job_pause', job_id: job.id},true)}>{job.state === 'paused' ? 'Wznów' : 'Pauza'}</Button><Button id="job-stop" class="stop" icon={IconPlayerStop} disabled={!controller.known.value || !controller.active.value} onClick={() => controller.send({action: controller.probing.value ? 'probe_stop' : 'job_stop'},true)}>Stop</Button></div></div>}</div><footer class="safety"><IconPower size={22} aria-hidden="true"/><p>W razie niebezpieczeństwa użyj fizycznego wyłącznika maszyny.</p></footer><Confirmation request={request} onClose={close} onConfirm={() => {const current = request; close(); controller.confirmedSend(current.payload,current.before,current.valid);}}/></main>;
 }
 render(<App/>, document.getElementById('app'));

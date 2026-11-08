@@ -68,6 +68,24 @@ class ProbeTests(unittest.TestCase):
         self.assertFalse(parse_status("<Idle|WPos:0,0,0|Pn:Z>")[
             "probe_triggered"
         ])
+
+    def test_contact_during_manual_motion_is_retained_after_release(self):
+        self.cnc.probe_tested = False
+        self.cnc._accept_status("<Jog|MPos:0,0,6|WCO:0,0,5|Pn:P>")
+        self.assertTrue(self.cnc.probe_tested)
+        self.cnc._accept_status("<Idle|MPos:0,0,6|WCO:0,0,5>")
+        self.assertTrue(self.cnc.probe_tested)
+        self.start()
+        self.assertEqual(self.cnc.probe.state, "starting")
+
+    def test_zero_search_accepts_ten_mm_but_rejects_longer_distance(self):
+        self.payload["distance"] = 10
+        self.start()
+        self.assertEqual(self.cnc.probe.command, "G90G38.2Z-9.0000F20")
+        self.cnc.probe.state = "idle"
+        self.payload["distance"] = 10.1
+        with self.assertRaises(ValueError):
+            self.start()
         self.assertFalse(self.cnc.status()["probe_triggered"])
         self.assertTrue(self.cnc.status()["probe_tested"])
         self.cnc.report_time = time.monotonic() - 3
@@ -78,7 +96,7 @@ class ProbeTests(unittest.TestCase):
 
     def test_confirmation_bounds_and_actual_pin_test_required(self):
         for key, value in (
-            ("confirmed", False), ("distance", 0), ("distance", 6),
+            ("confirmed", False), ("distance", 0), ("distance", 10.1),
             ("distance", float("nan")), ("feed", 9), ("feed", 61),
             ("position", [0, 0, 2]),
         ):

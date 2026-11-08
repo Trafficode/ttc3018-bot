@@ -1,5 +1,8 @@
 # Set up another Raspberry Pi
 
+For optional source-package copper isolation, also follow
+[RPi CAM setup and limits](cam-preparation.md#install-and-verify).
+
 ## Target and prerequisites
 
 Use Raspberry Pi 5 with 64-bit Raspberry Pi OS Trixie. The baseline was tested
