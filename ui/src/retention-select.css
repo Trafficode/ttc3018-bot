@@ -1,0 +1,11 @@
+.compact .app-select>label{display:block;margin-bottom:6px;font-size:12px;color:var(--muted)}
+.compact .app-select>button{display:flex;justify-content:space-between;width:100%;min-height:44px;padding:9px 12px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:inherit;text-align:left;font:inherit;gap:12px}
+.compact .app-select>button:hover:not(:disabled),.compact .app-select>button[aria-expanded=true]{border-color:var(--accent);background:var(--surface)}
+.compact .app-select>button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.app-select .select-chevron{flex:none;color:var(--muted)}
+.app-select [aria-expanded=true] .select-chevron{transform:rotate(180deg)}
+.app-select-menu{position:fixed;z-index:120;box-sizing:border-box;max-width:calc(100vw - 24px);padding:4px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:inherit;box-shadow:0 5px 18px #20273125}
+.app-select-menu .select-option{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:9px 8px;border-radius:2px;cursor:pointer;font-size:13px;line-height:1.4}
+.app-select-menu .select-option[aria-selected=true]{color:var(--accent);font-weight:600}
+.app-select-menu .select-option.active{background:var(--selected);outline:1px solid var(--accent);outline-offset:-1px}
+.app-select-menu .select-option svg{flex:none}

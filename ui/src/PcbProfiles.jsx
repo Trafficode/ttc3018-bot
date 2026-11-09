@@ -1,4 +1,5 @@
 import {useEffect,useState} from 'preact/hooks';
+import {RetentionSelect} from './RetentionSelect.jsx';
 import {IconPlus,IconPencil} from '@tabler/icons-preact';
 import {FieldHelp,Disclosure} from './FieldHelp.jsx';
 import {initialProcessValues,profileValuesValid,friendlyError} from './pcb-fields.js';
@@ -18,7 +19,7 @@ function ProcessEditor({controller,profile,onDone}){
     <h3>Obrys · frez Ø1 mm</h3><div class="pcb-form-grid">{['millFeed','millPlunge','millPower','stepDownMm','cuttingLengthMm'].map(field)}</div>
     <Disclosure title="Podkład i przejazdy"><div class="pcb-form-grid">{field('backingMm')}{field('clearanceMm')}</div></Disclosure>
     <Disclosure title="Zaawansowane · geometria i zapasy"><div class="pcb-form-grid">{['drillPointAngleDeg','breakthroughMm','uncertaintyMm'].map(field)}</div></Disclosure>
-    <Disclosure title="Domyślny sposób oddzielenia"><label>Sposób oddzielenia<select value={values.retention} onChange={event=>setValues({...values,retention:event.currentTarget.value})}><option value="skin">Cienka warstwa</option><option value="tabs">Cztery mostki</option></select></label><div class="pcb-form-grid">{field('skinMm')}{field('tabWidthMm')}{field('tabHeightMm')}</div></Disclosure>
+    <Disclosure title="Domyślny sposób oddzielenia"><RetentionSelect id="process-retention" label="Sposób oddzielenia" value={values.retention} disabled={locked} onChange={value=>{setValues({...values,retention:value});setConfirmed(false);}}/><div class="pcb-form-grid">{field('skinMm')}{field('tabWidthMm')}{field('tabHeightMm')}</div></Disclosure>
     <label class="cam-confirm"><input type="checkbox" checked={confirmed} disabled={locked} onChange={event=>setConfirmed(event.currentTarget.checked)}/><span>Parametry odpowiadają moim narzędziom i mocowaniu. Grubość laminatu podam przy zleceniu.</span></label>
     {!profileValuesValid(values) && <p class="pcb-help">Uzupełnij narzędzia oraz grubość podkładu. Posuwy i wrzeciono wymagają ustawienia dla Twojego zestawu.</p>}
     {!calibration?.model && <p role="alert">W karcie Frez V wybierz skalibrowany frez przed zapisem.</p>}

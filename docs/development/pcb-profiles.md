@@ -27,6 +27,8 @@ Material and mounting expands with a visible chevron. It shows saved backing,
 clearance and uncertainty, plus the job's optional separation override. A new
 material, cutter or mounting needs a suitable profile; hiding a field does not
 remove its server validation or physical verification requirement.
+The skin/tab selector uses the application's own popover in both job and profile
+views, including selected-state marking, arrow keys, Enter, Escape and Tab.
 
 ## Storage and revision rules
 
