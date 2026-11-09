@@ -7,12 +7,17 @@ source diameter, then a retained outside outline. Computer-aided manufacturing
 ## Setup and output
 
 Enter measured laminate thickness for every new job. The form never restores that
-field automatically. Tool/material preferences remain local to this browser;
-the immutable CAM request captures the actual accepted values. Feed/spindle
-settings have no cutting defaults: supply the values for the actual tools.
-The UI requires backing thickness, clearance, a thickness/Z uncertainty budget,
-drill point angle, drill feed/power, flat-end-mill feed/plunge/power, axial step
-and cutting length. Spindle S is a controller scale, not measured RPM.
+field automatically. Select a named machining profile stored on the station;
+the immutable CAM request captures its revision, V-bit calibration and accepted
+tool/setup values. The normal job form has one numeric input: thickness.
+Material and mounting details have an explicit expanding arrow and information
+buttons. Optional skin/retention overrides apply to that job only.
+
+Configure feeds, spindle scale, tools and backing once in Profiles, not on every
+board. Feed/spindle settings have no cutting defaults: supply the values for the
+actual tools. Previous browser preferences can prefill a draft but require an
+explicit review and save before use. See [machining profiles](pcb-profiles.md)
+for parameter ownership, persistence and API details.
 
 The initial mechanical engine supports round Excellon holes, grouped into one
 program per diameter from 0.3 to 4 mm, and the rectangular source outline with a
@@ -76,11 +81,15 @@ Operator routes, with the existing token and same-origin POST checks:
 
 - GET `/api/cam/flow/:id`: progress, updated from sender completion.
 - POST `/api/cam/load-stage`: id, index, confirmedTool, confirmedReference.
-- POST `/api/cam/prepare`: existing inputs plus validated `workflow` settings.
+- POST `/api/cam/prepare`: source identity, calibrated-profile fingerprint,
+  `processProfileId`, `processFingerprint`, `material` and explicit confirmations.
+  The server resolves saved tool values; browser tool overrides are ignored.
 
 The collection ingestion token cannot access these routes. The old isolation-only
 API remains compatible; the UI now prepares full PCB requests. Existing completed
 isolation results remain history and become stale when implementation hashes change.
+Changed machining profiles mark their results stale and block both loading and
+Start, including a program already loaded before the profile was edited.
 
 ## Verification limits
 
@@ -107,3 +116,7 @@ Default V-profile depth. No page errors or horizontal overflow were found.
 Scoped deployment compared source hashes, tested a separate tree, backed up every
 replaced file and restarted only a disconnected station with an empty job.
 The milling and relay HTTPS endpoints both continued to return HTTP 200.
+
+The later compact-UI/profile change passed 152 Python tests and desktop/phone
+browser checks. A saved recipe was also resolved into a real offline-worker
+fixture with four operations; station profiles and the sender were untouched.

@@ -42,6 +42,12 @@ disconnect semantics are unchanged.
 
 ## Spindle preset
 
+Manual spindle controls now expand inside Move. Camera and Service have icon
+buttons in the topbar; the main navigation is Move, Zero, File and Profiles.
+Tool values have information buttons rather than permanently expanded help.
+PCB jobs use [saved machining profiles](pcb-profiles.md), with measured laminate
+thickness as the only numeric input in the normal job view.
+
 The range slider and numeric field represent integer S=1..1000, not measured RPM.
 They share one value and never send a command on input. Only confirmed `Włącz`
 sends `spindle_on` with the selected value. Invalid/non-integer input disables
@@ -51,13 +57,14 @@ override the running program.
 
 ## Responsive layout and validation
 
-Desktop uses a compact status bar, left tool navigation, central task workspace
-and right camera/map preview. File opens with separate Preparation and Milling
+Desktop uses a compact status bar, left tool navigation and central workspace.
+Opening Camera adds a right preview; closing it returns that space to the task.
+File opens with separate Preparation and Milling
 views. Measurement configuration stays in Preparation. Milling shows feed,
 compensation and expandable bounds/settings. The execution toolbar stays outside
 the scrolling content. Ready-to-mill primary controls fit without scrolling at
 1440x900, 390x844 and 360x740. Expanded maps/settings can scroll independently.
-Mobile has horizontal tool navigation and an initially collapsed camera. Full
+Mobile has four horizontal tools and camera closed by default. Full
 camera frames are contained instead of cropped; letterboxing can appear.
 
 Camera Maximize opens even from the collapsed state. On phones it allocates half

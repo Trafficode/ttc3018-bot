@@ -11,11 +11,17 @@ import re
 import warnings
 import zipfile
 
-from gerbonara import ExcellonFile
-from gerbonara.utils import MM
-
 from monitor.jobs import parse_program
 
+FLOW_LIMITS = {
+    "thicknessMm": (.3, 3), "skinMm": (.15, .5),
+    "uncertaintyMm": (.01, .2), "breakthroughMm": (.05, 1),
+    "stepDownMm": (.02, .5), "cuttingLengthMm": (.5, 15),
+    "drillFeed": (1, 100), "drillPower": (1, 1000),
+    "drillPointAngleDeg": (60, 150), "backingMm": (1, 50),
+    "millFeed": (1, 300), "millPlunge": (1, 100),
+    "millPower": (1, 1000), "millDiameterMm": (1, 1),
+    "tabWidthMm": (2, 6), "tabHeightMm": (.2, .8)}
 
 def number(data, name, low, high):
     """Require an explicit finite JSON number within a physical input range."""
@@ -31,23 +37,8 @@ def validate_flow(data):
     """Capture material and separate drill/end-mill parameters, no defaults."""
     if not isinstance(data, dict):
         raise ValueError("Wprowadź parametry wykonania PCB.")
-    result = {
-        "thicknessMm": number(data, "thicknessMm", .3, 3),
-        "skinMm": number(data, "skinMm", .15, .5),
-        "uncertaintyMm": number(data, "uncertaintyMm", .01, .2),
-        "breakthroughMm": number(data, "breakthroughMm", .05, 1),
-        "stepDownMm": number(data, "stepDownMm", .02, .5),
-        "cuttingLengthMm": number(data, "cuttingLengthMm", .5, 15),
-        "drillFeed": number(data, "drillFeed", 1, 100),
-        "drillPower": number(data, "drillPower", 1, 1000),
-        "drillPointAngleDeg": number(data, "drillPointAngleDeg", 60, 150),
-        "backingMm": number(data, "backingMm", 1, 50),
-        "millFeed": number(data, "millFeed", 1, 300),
-        "millPlunge": number(data, "millPlunge", 1, 100),
-        "millPower": number(data, "millPower", 1, 1000),
-        "millDiameterMm": number(data, "millDiameterMm", 1, 1),
-        "tabWidthMm": number(data, "tabWidthMm", 2, 6),
-        "tabHeightMm": number(data, "tabHeightMm", .2, .8)}
+    result = {key: number(data, key, low, high)
+              for key, (low, high) in FLOW_LIMITS.items()}
     retention = data.get("retention")
     if retention not in ("skin", "tabs"):
         raise ValueError("Wybierz cienką warstwę lub mostki.")
@@ -86,6 +77,8 @@ def checked_program(lines, name):
 
 def drill_groups(data, transform, directory):
     """Read every PTH/NPTH round hole; slots fail rather than disappear."""
+    from gerbonara import ExcellonFile
+    from gerbonara.utils import MM
     groups = {}
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         names = [name for name in archive.namelist()

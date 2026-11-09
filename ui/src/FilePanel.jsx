@@ -1,10 +1,11 @@
 import {IconFileCode, IconFolder, IconFocus2, IconPlayerPlay, IconChevronDown, IconSettings} from '@tabler/icons-preact';
-import {SurfacePlan} from './SurfacePlan.jsx';
+import {SurfacePlan,SurfacePreview} from './SurfacePlan.jsx';
+import {Disclosure} from './FieldHelp.jsx';
 import {surfaceHeights} from './surface-plan.js';
 import {LibraryPicker} from './LibraryPicker.jsx';
 import {ActivePcbFlow} from './PcbFlow.jsx';
 
-export function FilePanel({controller, job, cnc, free, manual, request, inputRef, upload, phase, onPhase, fileFeed, onFeed, originalFeed, onOriginal, feedValid, surfaceReady, surfaceSettings, onSurfaceSettings, useMap, onUseMap, ask, onOpenZero}) {
+export function FilePanel({controller, job, cnc, free, manual, request, inputRef, upload, phase, onPhase, fileFeed, onFeed, originalFeed, onOriginal, feedValid, surfaceReady, surfaceSettings, onSurfaceSettings, useMap, onUseMap, ask, onOpenZero,onOpenProfiles}) {
   const locked = !free || !!request;
   const fromFile = controller.active.value ? job.xy_feed == null : originalFeed;
   const selectedFeed = controller.active.value ? job.xy_feed : originalFeed ? null : Number(fileFeed);
@@ -15,9 +16,10 @@ export function FilePanel({controller, job, cnc, free, manual, request, inputRef
   const spread = heights.min === null ? null : (heights.max - heights.min).toLocaleString('pl-PL', {maximumFractionDigits:3});
   return <>
     <ActivePcbFlow controller={controller} locked={locked} onOpenZero={onOpenZero} onPrepare={()=>{onPhase('prepare');requestAnimationFrame(()=>document.getElementById('surface-heading')?.scrollIntoView({block:'start'}));}}/>
-    <LibraryPicker controller={controller} locked={locked}/>
+    <LibraryPicker controller={controller} locked={locked} onOpenProfiles={onOpenProfiles}/>
     <div class="file-choice"><IconFileCode size={23}/><div class="file-name"><strong>{job.name || 'Nie wybrano pliku'}</strong><small>{job.name ? `${job.total} poleceń · F ≤ ${job.max_feed} mm/min · S ≤ ${job.max_power}` : 'G-code · do 1 MiB'}</small></div><button type="button" disabled={locked} title={locked ? 'Poczekaj na zakończenie zadania lub pomiaru' : 'Wczytaj program G-code'} onClick={() => inputRef.current.click()}><IconFolder size={17}/>Wybierz plik</button><input ref={inputRef} id="job-file" class="file-input" type="file" accept=".nc,.ngc,.gcode,.tap" disabled={locked} onChange={upload}/></div>
     {job.id ? <>
+      {phase==='cut' && cnc.surface_map?.valid && <Disclosure title="Mapa powierzchni Z"><SurfacePreview job={job} map={cnc.surface_map}/></Disclosure>}
       {job.pcb_flow?.kind==='drilling' && <p class="pcb-next">Po zmianie wiertła przejdź do zakładki Zero i wykonaj pomiar Z na nieobrobionej ramie miedzi. Zachowaj X/Y. Start bez nowego pomiaru jest zablokowany.</p>}
       <p class="file-profile">Profil CAM: {job.cam_profile ? (profileMatches ? profile.name : 'inny profil') : 'Domyślny · bez korekt'}. {profileMatches ? 'Geometria X/Y pochodzi z pliku.' : 'Plik nie odpowiada wybranemu profilowi. Oblicz CAM ponownie w kolekcji RPi albo wybierz profil zgodny z plikiem. Start zostanie zablokowany.'}{calibrated && ' Posuw i głębokość muszą pozostać według CAM.'}</p>
       <div class="job-phases" role="group" aria-label="Etap pracy z plikiem"><button type="button" aria-pressed={phase === 'prepare'} disabled={controller.active.value && !controller.probing.value} onClick={() => onPhase('prepare')}><IconFocus2 size={17}/>Przygotowanie</button><button type="button" aria-pressed={phase === 'cut'} disabled={controller.probing.value} onClick={() => onPhase('cut')}><IconPlayerPlay size={17}/>Frezowanie</button></div>

@@ -23,6 +23,7 @@ from types import SimpleNamespace
 from controller_fixture import Controller
 
 try:
+    import gerbonara
     from monitor.pcb_flow import mechanical_programs, validate_flow
     GEOMETRY = True
 except ImportError:

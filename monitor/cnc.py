@@ -452,6 +452,9 @@ class Controller:
                     raise ValueError("Wymagane potwierdzenie operatora.")
                 flow = self.jobs.program.get("pcb_flow")
                 if flow:
+                    recipes = getattr(self, "process_profiles", None)
+                    if recipes and flow.get("processProfile"):
+                        recipes.assert_snapshot(flow["processProfile"])
                     if self.jobs.state in ("completed", "stopped", "failed"):
                         raise ValueError("Wczytaj etap ponownie i powtórz Z; "
                                          "nie uruchamiaj go drugi raz.")

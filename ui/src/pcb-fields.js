@@ -1,0 +1,21 @@
+export const pcbFields={
+  thicknessMm:{label:'Grubość laminatu',unit:'mm',min:.3,max:3,help:'Zmierz grubość tej płytki. Z niej obliczamy głębokość wiercenia i obrysu. Wpisujesz przy każdym zleceniu; pomiar Z nie mierzy grubości.'},
+  skinMm:{label:'Warstwa do oddzielenia',unit:'mm',min:.15,max:.5,help:'Tyle laminatu ma pozostać pod rowkiem obrysu. Dla 1 mm laminatu i warstwy 0,2 mm frez zagłębi się na 0,8 mm. To planowana wartość, zależna od dokładności grubości i Z.'},
+  uncertaintyMm:{label:'Rezerwa dokładności',unit:'mm',min:.01,max:.2,help:'Przyjęty budżet błędu grubości i ustawienia Z. Nie jest pomiarem dokładności maszyny. Musi być mniejszy od pozostawionej warstwy; wpływa też na wymagany zapas wiercenia.'},
+  backingMm:{label:'Grubość podkładu',unit:'mm',min:1,max:50,help:'Zmierz drewniany podkład pod laminatem. Wiertło wejdzie w niego częściowo. Program sprawdza, czy nie przebije podkładu; nie uwzględnia metalowych mocowań w jego wnętrzu.'},
+  clearanceMm:{label:'Wysokość przejazdów',unit:'mm',min:1,max:10,help:'Na tę wysokość ponad materiał podnosi się narzędzie między miejscami obróbki. Musi minąć mocowania na trasie. Wysokość sondowania ma osobne ograniczenia.'},
+  breakthroughMm:{label:'Zapas przewiercenia',unit:'mm',min:.05,max:1,help:'Dodatkowe wejście w podkład, żeby otwór przeszedł całym przekrojem. Program osobno dolicza długość stożka czubka wiertła. Zapas musi pokryć nierówność powierzchni i rezerwę dokładności.'},
+  drillPointAngleDeg:{label:'Kąt czubka wiertła',unit:'°',min:60,max:150,help:'Kąt ostrza z danych Twoich wierteł. Wartość 118° jest początkowym ustawieniem do sprawdzenia, nie pomiarem. Kąt służy do obliczenia głębokości pełnego przejścia otworu.'},
+  drillFeed:{label:'Zagłębianie wiertła',unit:'mm/min',min:1,max:100,help:'Prędkość opuszczania wiertła w materiał. Dobierz ją dla wierteł i laminatu; zapisujesz raz w profilu.'},
+  drillPower:{label:'Wrzeciono · wiercenie',unit:'S',min:1,max:1000,help:'Poziom sterowania wrzecionem podczas wiercenia. S1000 oznacza pełną skalę sterownika, nie 1000 obr./min ani pomiar obrotów.'},
+  millFeed:{label:'Przesuw frezu Ø1 mm',unit:'mm/min',min:1,max:300,help:'Prędkość ruchu frezu w poziomie podczas wycinania obrysu. To ustawienie dla frezu płaskiego, niezależne od kalibracji frezu V.'},
+  millPlunge:{label:'Zagłębianie frezu',unit:'mm/min',min:1,max:100,help:'Prędkość pionowego wejścia frezu Ø1 mm w laminat. Jest oddzielna od ruchu w poziomie i od prędkości sondowania.'},
+  millPower:{label:'Wrzeciono · obrys',unit:'S',min:1,max:1000,help:'Poziom sterowania wrzecionem przy wycinaniu obrysu. Wartości S nie są obrotami RPM. Ustaw dla rzeczywistego frezu i materiału.'},
+  stepDownMm:{label:'Warstwa jednego przejścia',unit:'mm',min:.02,max:.5,help:'Maksymalne pogłębienie rowka w jednym obiegu. Program sam wyliczy liczbę obiegów i ostatnie, płytsze przejście.'},
+  cuttingLengthMm:{label:'Długość ostrzy frezu',unit:'mm',min:.5,max:15,help:'Długość części roboczej frezu Ø1 mm, nie całego narzędzia. Musi wystarczyć na docelową głębokość, żeby trzpień nie tarł o laminat.'},
+  tabWidthMm:{label:'Szerokość mostka',unit:'mm',min:2,max:6,help:'Szerokość zaprogramowanej przerwy w głębokim cięciu. Średnica frezu zmniejsza rzeczywistą szerokość pozostającego połączenia przy jego końcach.'},
+  tabHeightMm:{label:'Wysokość mostka',unit:'mm',min:.2,max:.8,help:'Tyle laminatu pozostaje w czterech miejscach, żeby płytka nie odpadła podczas wycinania. Mostki odcinasz po obróbce.'}
+};
+export const initialProcessValues={skinMm:.2,uncertaintyMm:.05,backingMm:'',breakthroughMm:.2,drillPointAngleDeg:118,drillFeed:'',drillPower:'',millFeed:'',millPlunge:'',millPower:'',stepDownMm:'',cuttingLengthMm:'',tabWidthMm:3,tabHeightMm:.3,retention:'skin',clearanceMm:3,millDiameterMm:1};
+export function profileValuesValid(values){return Object.entries(pcbFields).filter(([key])=>key!=='thicknessMm').every(([key,field])=>values[key]!=='' && Number.isFinite(Number(values[key])) && Number(values[key])>=field.min && Number(values[key])<=field.max) && Number(values.skinMm)>Number(values.uncertaintyMm);}
+export function friendlyError(message){return Object.entries(pcbFields).reduce((text,[key,field])=>text.replaceAll(key,field.label),message);}

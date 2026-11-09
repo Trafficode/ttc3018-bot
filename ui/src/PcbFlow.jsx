@@ -1,24 +1,11 @@
 import {useEffect, useState} from 'preact/hooks';
 import {IconCheck, IconTool, IconArrowRight} from '@tabler/icons-preact';
 import './pcb-flow.css';
+import {Disclosure,FieldHelp} from './FieldHelp.jsx';
+import {PcbNumber} from './PcbField.jsx';
+import {pcbFields,friendlyError} from './pcb-fields.js';
 
-const numericFields = [
-  ['thicknessMm','Grubość laminatu','mm',.3,3],
-  ['skinMm','Pozostawiona warstwa','mm',.15,.5],
-  ['uncertaintyMm','Budżet błędu grubości i Z','mm',.01,.2],
-  ['backingMm','Grubość drewnianego podkładu','mm',1,50],
-  ['breakthroughMm','Zapas przejścia w podkład','mm',.05,1],
-  ['drillPointAngleDeg','Kąt wierzchołkowy wiertła','°',60,150],
-  ['drillFeed','Posuw Z wiercenia','mm/min',1,100],
-  ['drillPower','Wrzeciono wiercenia','S',1,1000],
-  ['millFeed','Posuw XY frezu Ø1 mm','mm/min',1,300],
-  ['millPlunge','Posuw Z frezu Ø1 mm','mm/min',1,100],
-  ['millPower','Wrzeciono frezu Ø1 mm','S',1,1000],
-  ['stepDownMm','Głębokość jednego przejścia','mm',.02,.5],
-  ['cuttingLengthMm','Długość robocza frezu Ø1 mm','mm',.5,15],
-  ['tabWidthMm','Szerokość mostka','mm',2,6],
-  ['tabHeightMm','Wysokość mostka','mm',.2,.8]
-];
+
 
 export async function flowApi(controller, url, options={}) {
   const response=await fetch(url,{...options,cache:'no-store',headers:{'X-PiloMill-Token':controller.data.value?.control_token || '',...(options.body ? {'Content-Type':'application/json'} : {})},signal:AbortSignal.timeout(15000)});
@@ -26,40 +13,32 @@ export async function flowApi(controller, url, options={}) {
   return response;
 }
 
-export function FlowSetup({source, controller, api, onPrepared, locked, filename}) {
-  const [values,setValues]=useState(()=>{
-    const defaults={thicknessMm:'',skinMm:'0.2',uncertaintyMm:'0.05',backingMm:'',breakthroughMm:'0.2',drillPointAngleDeg:'118',drillFeed:'',drillPower:'',millFeed:'',millPlunge:'',millPower:'',stepDownMm:'',cuttingLengthMm:'',tabWidthMm:'3',tabHeightMm:'0.3',retention:'skin',clearanceMm:'3'};
-    try{const saved=JSON.parse(localStorage.getItem('bark:pcb-tool-settings') || '{}');for(const key of Object.keys(defaults))if(key!=='thicknessMm' && typeof saved[key]==='string')defaults[key]=saved[key];}catch{}
-    return defaults;
-  });
-  useEffect(()=>{const {thicknessMm,...saved}=values;try{localStorage.setItem('bark:pcb-tool-settings',JSON.stringify(saved));}catch{}},[values]);
+export function FlowSetup({source, controller, api, onPrepared, locked, filename,onOpenProfiles}) {
+  const [store,setStore]=useState(null),[profileId,setProfileId]=useState(''),[thickness,setThickness]=useState('');
+  const [skin,setSkin]=useState(null),[retention,setRetention]=useState(null);
   const [confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  const profile=controller.cnc.value.calibration_profiles?.selected;
-  const value=key=>Number(String(values[key]).replace(',','.'));
-  const depth=values.retention==='skin' ? value('thicknessMm')-value('skinMm') : value('thicknessMm')+value('breakthroughMm');
-  const valid=numericFields.every(([key,label,unit,min,max])=>values[key]!=='' && Number.isFinite(value(key)) && value(key)>=min && value(key)<=max) && value('skinMm')>value('uncertaintyMm') && value('thicknessMm')>(values.retention==='skin' ? value('skinMm') : value('tabHeightMm')) && value('cuttingLengthMm')>=depth && value('clearanceMm')>=1 && value('clearanceMm')<=10;
-  function field(key) {
-    const [,label,unit,min,max]=numericFields.find(item=>item[0]===key) || [key,'Wycofanie Z','mm',1,10];
-    return <label class="pcb-field" key={key} for={`pcb-${key}`}><span>{label}</span><div><input id={`pcb-${key}`} type="number" required min={min} max={max} step="any" value={values[key]} disabled={busy} onInput={event=>setValues({...values,[key]:event.currentTarget.value})}/><small>{unit}</small></div></label>;
-  }
-  async function prepare(event) {
-    event.preventDefault();setError('');if(!valid || !confirmed)return;setBusy(true);
-    const workflow={...Object.fromEntries(numericFields.map(([key])=>[key,value(key)])),retention:values.retention,millDiameterMm:1,confirmedSetup:true};
-    try{const response=await api('/api/cam/prepare',{method:'POST',body:JSON.stringify({packageId:source.id,name:filename,profileFingerprint:profile.fingerprint,clearanceMm:value('clearanceMm'),confirmedDatum:true,workflow})});onPrepared(await response.json());}
-    catch(cause){setError(cause.message);}finally{setBusy(false);}
-  }
-  return <form class="pcb-setup" onSubmit={prepare}>
-    <ol class="pcb-steps" aria-label="Etapy wykonania PCB">{['Ścieżki','Otwory','Obrys'].map((text,index)=><li key={text}><b>{index+1}</b><span>{text}</span></li>)}</ol>
-    <div class="pcb-form-grid">{field('thicknessMm')}{field('skinMm')}</div>
-    <div class="pcb-depth" role="status"><span>Obrys · frez Ø1 mm</span><strong>{values.thicknessMm && depth>0 ? `${depth.toFixed(2)} mm w głąb` : 'Wpisz zmierzoną grubość laminatu'}</strong><small>{values.retention==='skin' ? 'Pozostawiona cienka warstwa do oddzielenia PCB' : 'Pełne cięcie z czterema mostkami'}</small></div>
-    <details><summary>Materiał i mocowanie</summary><div class="pcb-form-grid">{field('backingMm')}{field('uncertaintyMm')}{field('clearanceMm')}</div><p>Wspólne G54: lewy dolny narożnik gotowego PCB od strony obróbki. {source.project.side==='B.Cu' ? 'B.Cu: odbicie X.' : 'F.Cu: bez odbicia.'} Zachowaj zero X/Y i mocowanie przez całe zlecenie.</p></details>
-    <details><summary>Narzędzia i parametry · wymagane</summary><p>Ścieżki: {profile?.name || 'wybierz profil'} · osobne ustawienia wierteł i frezu płaskiego. Wpisz parametry dla swoich narzędzi; S jest skalą sterownika, nie RPM.</p><div class="pcb-form-grid">{['drillPointAngleDeg','drillFeed','drillPower','breakthroughMm','millFeed','millPlunge','millPower','stepDownMm','cuttingLengthMm'].map(field)}</div></details>
-    <details><summary>Sposób oddzielenia i pomiar Z</summary><label>Sposób mocowania obrysu<select value={values.retention} onChange={event=>setValues({...values,retention:event.currentTarget.value})}><option value="skin">Cienka warstwa na całym obwodzie</option><option value="tabs">Cztery mostki</option></select></label>{values.retention==='tabs' && <div class="pcb-form-grid">{field('tabWidthMm')}{field('tabHeightMm')}</div>}<p>Ścieżki: mapa powierzchni. Każde wiertło: nowe zero Z w jednym punkcie. Obrys: osiem pomiarów na nieobrobionej, elektrycznie ciągłej ramie laminatu, poza PCB. Środek nie jest sondowany. Grubość i budżet błędu wymagają własnego pomiaru; mapa Z nie mierzy grubości laminatu.</p></details>
-    <label class="cam-confirm"><input type="checkbox" checked={confirmed} disabled={busy} onChange={event=>setConfirmed(event.currentTarget.checked)}/><span>Potwierdzam stronę i zero PCB, stabilny podkład, prześwit nad mocowaniami oraz nieobrobioną ramę miedzi co najmniej 2 mm wokół PCB do pomiarów Z. Narzędzia i wartości odpowiadają mojemu zestawowi.</span></label>
-    {!valid && <p class="pcb-help">Uzupełnij grubość, podkład i parametry narzędzi. Zlecenie nie używa domyślnych posuwów frezowania.</p>}
-    {controller.cnc.value.connected && <p>Rozłącz CNC przed obliczeniem programów.</p>}
-    {error && <p role="alert">{error}</p>}
-    <button class="primary cam-primary" type="submit" disabled={locked || busy || !valid || !confirmed || !profile?.model || controller.cnc.value.connected}>{busy ? 'Zapisywanie…' : 'Przygotuj całe PCB na RPi'}</button>
+  const profile=store?.profiles.find(value=>value.id===profileId);
+  const active=controller.cnc.value.calibration_profiles?.selected;
+  const matches=profile?.isolation.id===active?.id && profile?.isolation.fingerprint===active?.fingerprint;
+  useEffect(()=>{let alive=true;api('/api/pcb-profiles').then(response=>response.json()).then(value=>{if(alive){setStore(value);setProfileId(value.active || value.profiles[0]?.id || '');}}).catch(cause=>{if(alive)setError(cause.message);});return()=>{alive=false;};},[]);
+  const material={thicknessMm:Number(thickness),skinMm:Number(skin ?? profile?.values.skinMm),retention:retention ?? profile?.values.retention};
+  const depth=material.retention==='skin' ? material.thicknessMm-material.skinMm : material.thicknessMm+Number(profile?.values.breakthroughMm);
+  const valid=!!profile && thickness!=='' && Number.isFinite(material.thicknessMm) && material.thicknessMm>=.3 && material.thicknessMm<=3 && material.skinMm>=.15 && material.skinMm<=.5 && material.skinMm>profile.values.uncertaintyMm && material.thicknessMm>(material.retention==='skin'?material.skinMm:profile.values.tabHeightMm) && depth<=profile.values.cuttingLengthMm;
+  async function select(id){setBusy(true);setError('');try{const value=store.profiles.find(item=>item.id===id);await api('/api/pcb-profiles/select',{method:'POST',body:JSON.stringify({id,fingerprint:value.fingerprint})});await controller.refresh(true);setProfileId(id);setSkin(null);setRetention(null);setConfirmed(false);}catch(cause){setError(friendlyError(cause.message));}finally{setBusy(false);}}
+  async function prepare(event){event.preventDefault();if(!valid || !confirmed || !matches)return;setBusy(true);setError('');try{const response=await api('/api/cam/prepare',{method:'POST',body:JSON.stringify({packageId:source.id,name:filename,profileFingerprint:active.fingerprint,confirmedDatum:true,confirmedSetup:true,processProfileId:profile.id,processFingerprint:profile.fingerprint,material})});onPrepared(await response.json());}catch(cause){setError(friendlyError(cause.message));}finally{setBusy(false);}}
+  if(!store)return <p role="status">{error || 'Wczytywanie profili obróbki…'}</p>;
+  if(store.error)return <p role="alert">{store.error}</p>;
+  if(!store.profiles.length)return <section class="process-onboarding"><strong>Jeden profil zamiast ustawiania narzędzi przy każdej płytce</strong><p>Zapisz parametry swojego zestawu. Przy zleceniu zostaną profil i zmierzona grubość laminatu.</p><button type="button" onClick={onOpenProfiles}>Ustaw profil obróbki</button>{error && <p role="alert">{error}</p>}</section>;
+  return <form class="pcb-setup simple-setup" onSubmit={prepare}>
+    <div class="job-basics"><div class="pcb-field"><div class="field-caption"><label for="pcb-process-profile">Profil obróbki</label><FieldHelp id="pcb-process-profile" label="Profil obróbki">Zapisany zestaw kalibracji frezu V, parametrów wierteł, frezu Ø1 mm i mocowania. Posuwów i wrzeciona nie wpisujesz przy każdym PCB.</FieldHelp></div><select id="pcb-process-profile" value={profileId} disabled={locked || busy} onChange={event=>select(event.currentTarget.value)}>{store.profiles.map(value=><option key={value.id} value={value.id}>{value.name}</option>)}</select></div><PcbNumber name="thicknessMm" prefix="pcb" value={thickness} disabled={locked || busy} onChange={value=>{setThickness(value);setConfirmed(false);}}/></div>
+    <div class="job-recipe"><small>{profile.isolation.name} · frez Ø1 mm</small><button type="button" class="text-button" disabled={busy} onClick={onOpenProfiles}>Edytuj profile</button></div>
+    {thickness && valid && <p class="job-depth" role="status">Obrys <strong>{depth.toFixed(2)} mm</strong> · {material.retention==='skin' ? `zostaje ${material.skinMm} mm` : '4 mostki'}</p>}
+    {thickness && !valid && <p role="alert">Sprawdź grubość, pozostawioną warstwę oraz długość ostrzy zapisaną w profilu.</p>}
+    <Disclosure title="Materiał i mocowanie"><dl class="setup-facts">{['backingMm','clearanceMm','uncertaintyMm'].map(key=><div key={key}><dt>{pcbFields[key].label}<FieldHelp id={`job-${key}`} label={pcbFields[key].label}>{pcbFields[key].help}</FieldHelp></dt><dd>{profile.values[key]} {pcbFields[key].unit}</dd></div>)}</dl><small>Wartości zapisane w profilu. Inny podkład lub mocowanie? Zaktualizuj profil.</small><label class="retention-choice">Oddzielenie PCB<select value={material.retention} onChange={event=>{setRetention(event.currentTarget.value);setConfirmed(false);}}><option value="skin">Cienka warstwa</option><option value="tabs">Cztery mostki</option></select></label>{material.retention==='skin' && <PcbNumber name="skinMm" prefix="job" value={skin ?? profile.values.skinMm} disabled={busy} onChange={value=>{setSkin(value);setConfirmed(false);}}/>}<p class="pcb-help">{source.project.side} · wspólne zero X/Y przez całe zlecenie. Pomiary Z wymagają ciągłej ramy miedzi co najmniej 2 mm wokół PCB.</p></Disclosure>
+    {!matches && <p class="profile-mismatch">Zestaw używa innej kalibracji frezu V. <button type="button" disabled={busy} onClick={()=>select(profile.id)}>Użyj tego zestawu</button></p>}
+    <label class="cam-confirm"><input type="checkbox" checked={confirmed} disabled={busy} onChange={event=>setConfirmed(event.currentTarget.checked)}/><span>Sprawdzone mocowanie, prześwit oraz ramka miedzi do pomiaru Z.</span></label>
+    {controller.cnc.value.connected && <p>Rozłącz CNC przed obliczeniem programów.</p>}{error && <p role="alert">{error}</p>}
+    <button type="submit" class="primary cam-primary" disabled={locked || busy || !valid || !confirmed || !matches || controller.cnc.value.connected}>{busy?'Zapisywanie…':'Przygotuj PCB'}</button>
   </form>;
 }
 

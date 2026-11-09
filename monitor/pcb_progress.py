@@ -14,8 +14,9 @@ from monitor.cam import write_json
 class PcbProgress:
     """Progress shares the CAM lock and tracks one exact loaded sender job."""
 
-    def __init__(self, collection):
+    def __init__(self, collection, process_profiles=None):
         self.collection = collection
+        self.process_profiles = process_profiles
         self.session = secrets.token_hex(16)
 
     def read(self, item_id, status):
@@ -57,6 +58,8 @@ class PcbProgress:
         """Explicitly load only the next operation after tool/setup review."""
         with self.collection.lock, cnc.lock:
             item = self.collection.get(item_id)
+            if item.get("processProfile") and self.process_profiles:
+                self.process_profiles.assert_snapshot(item["processProfile"])
             sequence = item.get("report", {}).get("sequence", [])
             progress = self.read(item_id, cnc.status())
             index = len(progress["completed"])
@@ -74,6 +77,8 @@ class PcbProgress:
                 # V-bit width/depth calibration model. No axis setting changes.
                 cnc.action("profile_select", {"profile_id": "default"})
             cnc.load_flow_program(program, {"id": item_id, "index": index,
+                                           "processProfile": item.get(
+                                               "processProfile"),
                                            "xyOffset": progress.get("xyOffset"),
                                            "surfaceSpreadMm": progress.get(
                                                "surfaceSpreadMm", 0),

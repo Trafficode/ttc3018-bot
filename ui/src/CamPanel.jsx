@@ -4,17 +4,13 @@ import {FlowSetup, FlowRun} from './PcbFlow.jsx';
 
 const stateNames = {running:'Obliczanie na RPi', ready:'Izolacja gotowa', blocked:'Geometria zablokowana', failed:'Błąd obliczeń', cancelled:'Anulowano', interrupted:'Przerwano', corrupt:'Uszkodzony wynik'};
 
-export function CamPreparation({source, controller, api, onPrepared, locked}) {
-  const profile = controller.cnc.value.calibration_profiles?.selected;
+export function CamPreparation({source, controller, api, onPrepared, locked,onOpenProfiles}) {
   const cad = source.files.filter(file => file.kind === 'cad');
   const [filename, setFilename] = useState(cad[0]?.name || '');
-  const diameter = profile?.model ? profile.model.intercept_mm + profile.model.slope * profile.depth : NaN;
   return <section class="cam-preparation" aria-label="Przygotowanie CAM">
     <h3><IconTool size={18}/>Wykonaj PCB · {source.project.side}</h3>
-    <p>Jeden plan, trzy etapy. Po każdej zmianie narzędzia nowy pomiar Z i osobny Start.</p>
     {cad.length > 1 && <label>Archiwum CAD<select disabled={locked} value={filename} onChange={event => setFilename(event.currentTarget.value)}>{cad.map(file=><option key={file.name}>{file.name}</option>)}</select></label>}
-    <details><summary>Profil ścieżek: {profile?.name || 'wybierz skalibrowany profil'}</summary><dl class="cam-facts"><div><dt>Rowek z kalibracji</dt><dd>{Number.isFinite(diameter) ? `${diameter.toFixed(3)} mm` : 'Brak kalibracji'}</dd></div><div><dt>Głębokość</dt><dd>{Number.isFinite(profile?.depth) ? `${profile.depth} mm` : '—'}</dd></div><div><dt>Posuw XY / Z</dt><dd>{profile?.conditions?.feed} / {profile?.conditions?.plunge} mm/min</dd></div></dl><small>Profil wybierzesz w pasku nad panelem. Nowa kalibracja wymaga ponownego obliczenia.</small></details>
-    <FlowSetup source={source} controller={controller} api={api} onPrepared={onPrepared} locked={locked} filename={filename}/>
+    <FlowSetup source={source} controller={controller} api={api} onPrepared={onPrepared} locked={locked} filename={filename} onOpenProfiles={onOpenProfiles}/>
   </section>;
 }
 

@@ -25,6 +25,8 @@ from monitor.library_http import library_request
 from monitor.cam import CamCollection
 from monitor.cam_http import cam_request
 from monitor.pcb_progress import PcbProgress
+from monitor.process_profiles import ProcessProfiles
+from monitor.process_http import process_request
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_FRAME_BYTES = 2 * 1024 * 1024
@@ -232,7 +234,10 @@ class MonitorServer(ThreadingHTTPServer):
         )
         self.cam = CamCollection(
             Path.home() / ".local/share/bark-beetle/cam", self.library)
-        self.pcb_progress = PcbProgress(self.cam)
+        self.process_profiles = ProcessProfiles(
+            Path.home() / ".local/share/bark-beetle/pcb-profiles.json")
+        self.cnc.process_profiles = self.process_profiles
+        self.pcb_progress = PcbProgress(self.cam, self.process_profiles)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -262,7 +267,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         """Serve the dashboard, status, fresh snapshot or shared MJPEG stream."""
-        if cam_request(self) or library_request(self):
+        if process_request(self) or cam_request(self) or library_request(self):
             return
         path = urlsplit(self.path).path
         assets = {
@@ -311,7 +316,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         """Accept allowlisted manual actions with a same-origin CSRF token."""
-        if cam_request(self) or library_request(self):
+        if process_request(self) or cam_request(self) or library_request(self):
             return
         if urlsplit(self.path).path != "/api/cnc/action":
             self.respond(501, "text/plain", b"Unsupported request")

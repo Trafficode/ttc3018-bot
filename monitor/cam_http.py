@@ -32,7 +32,15 @@ def cam_request(handler):
         status = cnc.status()
         profile = status.get("calibration_profiles", {}).get("selected", {})
         if handler.command == "GET" and path == "/api/cam":
-            respond(200, {"programs": collection.list(profile)})
+            programs = collection.list(profile)
+            for item in programs:
+                if item.get("processProfile"):
+                    try:
+                        handler.server.process_profiles.assert_snapshot(
+                            item["processProfile"])
+                    except ValueError:
+                        item["stale"] = True
+            respond(200, {"programs": programs})
         elif handler.command == "GET" and path.startswith("/api/cam/preview/"):
             respond(200, collection.preview(path.split("/")[-1]))
         elif handler.command == "GET" and path.startswith("/api/cam/flow/"):
@@ -61,7 +69,14 @@ def cam_request(handler):
                     "state") in ("running", "paused", "pausing", "resuming",
                                  "draining") or status.get("probing"):
                     raise RuntimeError("Rozłącz CNC przed obliczaniem CAM.")
-                respond(202, collection.start(payload, profile))
+                if payload.get("processProfileId"):
+                    recipe, workflow, clearance = (
+                        handler.server.process_profiles.resolve(payload, profile))
+                    payload = {**payload, "workflow": workflow,
+                               "clearanceMm": clearance}
+                    respond(202, collection.start(payload, profile, recipe))
+                else:
+                    respond(202, collection.start(payload, profile))
             elif path == "/api/cam/cancel":
                 respond(200, collection.cancel(payload.get("id")))
             elif path == "/api/cam/load-stage":

@@ -3,7 +3,7 @@ import {IconBooks, IconChevronLeft, IconFileCode, IconDownload, IconRefresh} fro
 import './library.css';
 import {CamPreparation, CamPrograms} from './CamPanel.jsx';
 
-export function LibraryPicker({controller, locked}) {
+export function LibraryPicker({controller, locked,onOpenProfiles}) {
   const [open, setOpen] = useState(false);
   const [packages, setPackages] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -62,7 +62,7 @@ export function LibraryPicker({controller, locked}) {
       {busy && <p role="status">Oczekiwanie na kolekcję…</p>}
       {!selected ? <div class="library-list">{packages.length === 0 && !busy && <p>Brak zestawów. Wyślij pierwszy z Tractor: Pobierz pliki → Wyślij do frezarki.</p>}{packages.map(item => item.corrupt ? <p key={item.id}>Uszkodzony pakiet · {item.id.slice(0,8)}</p> : <button type="button" key={item.id} disabled={busy} onClick={() => setSelected(item)}><span><strong>{item.project.name}</strong><small>{new Date(item.receivedAt).toLocaleString('pl-PL')} · {item.project.side} · {item.project.boardHash.slice(0,8)}</small></span><span>{item.files.some(file => file.kind === 'program') ? `${item.files.filter(file=>file.kind==='program').length} programów` : 'Wymaga CAM'}</span></button>)}</div> : <>
         <div class="library-project" ref={heading} tabIndex={-1}><strong>{selected.project.name}</strong><small>PCB {selected.project.boardHash.slice(0,12)} · {selected.project.side}</small></div>
-        {selected.files.some(file=>file.kind==='cad') && <CamPreparation key={selected.id} source={selected} controller={controller} api={api} locked={locked} onPrepared={item=>{setPrepared(item);setCollection('programs');}}/>}
+        {selected.files.some(file=>file.kind==='cad') && <CamPreparation key={selected.id} source={selected} controller={controller} api={api} locked={locked} onPrepared={item=>{setPrepared(item);setCollection('programs');}} onOpenProfiles={onOpenProfiles}/>}
         <details><summary>Oryginalne pliki paczki</summary><p>Wczytanie programu zastępuje bieżący plik i unieważnia poprzednią mapę powierzchni.</p>
         <div class="library-files">{selected.files.map(file => <div key={file.name}><IconFileCode size={19}/><span><strong>{file.name}</strong><small>{file.kind==='program' ? `${file.commands} poleceń · ${matches(file) ? 'Profil zgodny' : 'Niezgodny profil — Start zablokowany'}` : 'CAD · Gerbery i wiercenia'}</small></span><button type="button" disabled={busy || locked} onClick={() => file.kind==='program' ? load(file) : download(file)}>{file.kind==='program' ? 'Wczytaj' : <><IconDownload size={16}/>Pobierz</>}</button></div>)}</div>
         </details>

@@ -123,7 +123,7 @@ class CamCollection:
         return sorted(result, key=lambda item: item.get("createdAt", ""),
                       reverse=True)
 
-    def start(self, payload, profile):
+    def start(self, payload, profile, process_profile=None):
         """Capture exact inputs before starting a single bounded subprocess."""
         if not profile.get("model") or "depth" not in profile:
             raise ValueError("Wybierz zmierzony profil ze stałą głębokością.")
@@ -151,6 +151,8 @@ class CamCollection:
                    "profile": copy.deepcopy(profile),
                    "clearanceMm": clearance, "engine": ENGINE}
         request["implementationHashes"] = implementation_hashes()
+        if process_profile:
+            request["processProfile"] = copy.deepcopy(process_profile)
         if payload.get("workflow") is not None:
             from monitor.pcb_flow import validate_flow
             request["workflow"] = validate_flow(payload["workflow"])

@@ -2,6 +2,7 @@ import {useLayoutEffect,useState} from 'preact/hooks';
 import {ParameterField} from './ParameterField.jsx';
 import {toolDiameter} from './service-geometry.js';
 import './profiles.css';
+import {FieldHelp} from './FieldHelp.jsx';
 
 const mm=v=>Number(v).toLocaleString('pl-PL',{maximumFractionDigits:4});
 export const defaultProfile={id:'default',name:'Domyślny',model:null,fingerprint:'default',depth:.05,conditions:{tip:.1,angle:30,feed:100,plunge:20,power:300}};
@@ -10,7 +11,7 @@ export function ProfileBar({controller,cnc}) {
   const ready=controller.known.value&&!controller.pending.value&&!controller.active.value&&(!cnc.connected||controller.manualReady.value);
   const operation=cnc.job?.pcb_flow;
   if(operation && operation.kind!=='isolation')return <div id="geometry-status" class="profile-bar"><strong>{operation.title}</strong><span>Głębokość −{mm(operation.depthMm)} mm · parametry zlecenia CAM</span>{selected.id!=='default' && <span role="alert">Profil jest inny — wczytaj etap ponownie.</span>}</div>;
-  return <div id="geometry-status" class="profile-bar"><label for="active-profile">Profil<select id="active-profile" value={selected.id} disabled={!store||!ready||!!store.error} onChange={e=>controller.send({action:'profile_select',profile_id:e.currentTarget.value})}>{(store?.profiles||[defaultProfile]).map(p=><option key={p.id} value={p.id}>{p.name}{p.depth!=null?` · Z −${p.depth}`:' · ustaw głębokość'}</option>)}</select></label><span>{selected.model?`D = ${mm(selected.model.intercept_mm)} + ${mm(selected.model.slope)} × h${selected.model.offset_mm!=null?` · ΔD ${selected.model.offset_mm>=0?'+':''}${mm(selected.model.offset_mm)} mm`:''}`:'Korekta: brak'}</span></div>;
+  return <div id="geometry-status" class="profile-bar"><label for="active-profile">Frez V<select id="active-profile" value={selected.id} disabled={!store||!ready||!!store.error} onChange={e=>controller.send({action:'profile_select',profile_id:e.currentTarget.value})}>{(store?.profiles||[defaultProfile]).map(p=><option key={p.id} value={p.id}>{p.name}{p.depth!=null?` · Z −${p.depth}`:' · ustaw głębokość'}</option>)}</select></label><FieldHelp id="active-v-model" label="Kalibracja frezu V">{selected.model?`Rowek z kalibracji: ${mm(selected.model.intercept_mm+selected.model.slope*selected.depth)} mm przy głębokości ${mm(selected.depth)} mm. Model pochodzi z pomiarów frezu V; nie opisuje wierteł i frezu płaskiego.`:'Wybrany profil nie ma zmierzonego modelu szerokości frezu V.'}</FieldHelp></div>;
 }
 
 function exportProfile(profile) {
