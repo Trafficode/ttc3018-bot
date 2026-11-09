@@ -62,6 +62,12 @@ def plan_grid(bounds, payload):
                     result["Y"][1] - result["Y"][0]
                 ) / (rows - 1),
             })
+    if payload.get("perimeterOnly") is True:
+        if columns != 3 or rows != 3:
+            raise ValueError("Mapa obwodu wymaga rozkładu 3×3 bez środka.")
+        points = [point for point in points if point["number"] != 5]
+        for index, point in enumerate(points):
+            point["number"] = index + 1
     return result, points
 
 
@@ -80,6 +86,7 @@ class SurfaceScan(ZProbe):
         self.offset = None
         self.reference = None
         self.reference_xy = None
+        self.perimeter = False
         self.sampling = False
         self.clearance = 2
 
@@ -96,6 +103,7 @@ class SurfaceScan(ZProbe):
         result = super().status()
         result.update({
             "kind": "surface", "id": self.map_id, "job_id": self.job_id,
+            "perimeterOnly": self.perimeter,
             "valid": self.valid, "reason": self.reason, "area": self.area,
             "points": self.points, "samples": self.samples,
             "reference_xy": self.reference_xy,
@@ -110,6 +118,14 @@ class SurfaceScan(ZProbe):
         if program is None or payload.get("job_id") != controller.jobs.job_id:
             raise ValueError("Plik zmienił się; odśwież plan.")
         area, points = plan_grid(program["bounds_mm"], payload)
+        outline = program.get("pcb_flow", {}).get("kind") == "outline"
+        if outline != (payload.get("perimeterOnly") is True):
+            raise ValueError("Dopasuj plan pomiaru do operacji obrysu.")
+        if outline and any(area[axis] != program["bounds_mm"][axis]
+                           for axis in ("X", "Y")):
+            raise ValueError("Punkty obrysu muszą leżeć na granicach "
+                             "przebiegu frezu, bez rozszerzania mapy.")
+        self.perimeter = outline
         clearance = float(payload.get("clearance", 1))
         below = float(payload.get("below", 0.4))
         distance = float(payload.get("distance", MAX_PROBE_TRAVEL))

@@ -8,6 +8,8 @@ export const defaultProfile={id:'default',name:'Domyślny',model:null,fingerprin
 export function ProfileBar({controller,cnc}) {
   const store=cnc.calibration_profiles, selected=store?.selected||defaultProfile;
   const ready=controller.known.value&&!controller.pending.value&&!controller.active.value&&(!cnc.connected||controller.manualReady.value);
+  const operation=cnc.job?.pcb_flow;
+  if(operation && operation.kind!=='isolation')return <div id="geometry-status" class="profile-bar"><strong>{operation.title}</strong><span>Głębokość −{mm(operation.depthMm)} mm · parametry zlecenia CAM</span>{selected.id!=='default' && <span role="alert">Profil jest inny — wczytaj etap ponownie.</span>}</div>;
   return <div id="geometry-status" class="profile-bar"><label for="active-profile">Profil<select id="active-profile" value={selected.id} disabled={!store||!ready||!!store.error} onChange={e=>controller.send({action:'profile_select',profile_id:e.currentTarget.value})}>{(store?.profiles||[defaultProfile]).map(p=><option key={p.id} value={p.id}>{p.name}{p.depth!=null?` · Z −${p.depth}`:' · ustaw głębokość'}</option>)}</select></label><span>{selected.model?`D = ${mm(selected.model.intercept_mm)} + ${mm(selected.model.slope)} × h${selected.model.offset_mm!=null?` · ΔD ${selected.model.offset_mm>=0?'+':''}${mm(selected.model.offset_mm)} mm`:''}`:'Korekta: brak'}</span></div>;
 }
 

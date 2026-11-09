@@ -31,7 +31,15 @@ def height_at(surface, x, y):
     # Samples arrive in serpentine order; index explicitly by grid cell.
     def cell(r, c):
         index = c if r % 2 == 0 else surface.columns - 1 - c
-        return surface.samples[r * surface.columns + index]["z"]
+        index = r * surface.columns + index
+        if getattr(surface, "perimeter", False):
+            if index == 4:
+                # Outline cutting stays on the measured boundary. This virtual
+                # centre only completes the interpolation lattice, not a probe.
+                return sum(surface.samples[i]["z"] for i in (1, 3, 4, 6))/4
+            if index > 4:
+                index -= 1
+        return surface.samples[index]["z"]
     return ((1 - a) * (1 - b) * cell(row, column)
             + a * (1 - b) * cell(row, column + 1)
             + (1 - a) * b * cell(row + 1, column)

@@ -228,6 +228,7 @@ class CollectionTests(unittest.TestCase):
             "connected": False, "job": {"state": "empty"},
             "calibration_profiles": {"selected": profile()}}
         server.cam.start.return_value = {"id": "c" * 64, "state": "running"}
+        server.cam.get.return_value = {}
         server.cam.program.return_value = {"name": "isolation.nc",
                                            "content": "fixture"}
         thread = threading.Thread(target=server.serve_forever, daemon=True)

@@ -296,6 +296,7 @@ class JobRunner:
                 "max_feed": program["max_feed"] if program else None,
                 "max_power": program["max_power"] if program else None,
                 "compensated": bool(program and program.get("compensated")),
+                "pcb_flow": program.get("pcb_flow") if program else None,
                 "tool_geometry": program.get("tool_geometry")
                 if program else None,
                 "xy_feed": program.get("xy_feed") if program else None,

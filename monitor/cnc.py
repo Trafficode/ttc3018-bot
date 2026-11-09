@@ -280,6 +280,13 @@ class Controller:
                 self._close(str(error))
                 raise RuntimeError(str(error)) from error
 
+    def load_flow_program(self, payload, operation):
+        """Attach trusted workflow metadata only through the internal loader."""
+        with self.lock:
+            self.action("job_load", payload)
+            self.probe.completed_job_id = None
+            self.jobs.program["pcb_flow"] = operation
+
     def action(self, action, payload):
         """Exclude all other senders while a probe owns the serial stream."""
         with self.lock:
@@ -443,6 +450,42 @@ class Controller:
                     raise ValueError("Połącz CNC; zakończ poprzednie zadanie.")
                 if payload.get("confirmed") is not True:
                     raise ValueError("Wymagane potwierdzenie operatora.")
+                flow = self.jobs.program.get("pcb_flow")
+                if flow:
+                    if self.jobs.state in ("completed", "stopped", "failed"):
+                        raise ValueError("Wczytaj etap ponownie i powtórz Z; "
+                                         "nie uruchamiaj go drugi raz.")
+                    if "xy_feed" in payload or payload.get("service_depth"):
+                        raise ValueError("Zlecenie PCB wymaga parametrów CAM.")
+                    if flow["zPreparation"] == "grid3":
+                        if not payload.get("surface_map_id") or (
+                            getattr(self.surface, "columns", 0) < 3
+                            or getattr(self.surface, "rows", 0) < 3
+                        ):
+                            raise ValueError("Ten etap wymaga nowej mapy "
+                                             "Z co najmniej 3×3.")
+                    elif self.probe.completed_job_id != self.jobs.job_id:
+                        raise ValueError("Wykonaj nowy pomiar zera Z "
+                                         "po zmianie wiertła.")
+                    offset = live_offset(self._line("$#"))
+                    if flow["kind"] == "drilling" and (
+                        self.probe.completed_offset is None or any(
+                            abs(a-b) > .002 for a, b in zip(
+                                offset, self.probe.completed_offset)
+                        )
+                    ):
+                        raise ValueError("Zero Z zmieniło się po pomiarze.")
+                    expected = flow.get("xyOffset")
+                    if expected is not None and any(
+                        abs(a-b) > .002 for a, b in zip(offset[:2], expected)
+                    ):
+                        raise ValueError("Zero X/Y zlecenia zmieniło się.")
+                    flow["xyOffset"] = offset[:2]
+                    if flow["kind"] == "outline" and not getattr(
+                        self.surface, "perimeter", False
+                    ):
+                        raise ValueError("Obrys wymaga pomiaru 8 punktów "
+                                         "na nieobrobionej ramie miedzi.")
                 self.calibration.profiles.check_program(
                     self.jobs.program, payload
                 )
@@ -493,6 +536,16 @@ class Controller:
                     execution = compensate_program(
                         execution or self.jobs.program, surface
                     )
+                if flow and flow["kind"] == "drilling":
+                    if flow.get("breakthroughMm", 0) < (
+                        flow.get("surfaceSpreadMm", 0)
+                        + flow.get("uncertaintyMm", 0)
+                    ):
+                        raise ValueError("Zapas wiercenia jest mniejszy niż "
+                                         "zmierzona nierówność i budżet błędu.")
+                    if self.calibration.profiles.active["id"] != "default":
+                        raise ValueError("Wiercenie wymaga profilu roboczego "
+                                         "bez korekty frezu V.")
                 result = self.jobs.start(payload.get("job_id"), execution)
                 self.calibration.invalidate_repeat("Uruchomiono inny program.")
                 return result

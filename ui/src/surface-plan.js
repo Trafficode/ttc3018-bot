@@ -5,6 +5,7 @@ export function surfaceHeights(map) {
   const origin = samples.find(point => near(point.x, 0) && near(point.y, 0));
   let baseline = origin?.z;
   let source = origin ? 'measured' : null;
+  if(map?.perimeterOnly){baseline=0;source='reference';}
   if (baseline === undefined && map?.reference_xy?.every(value => near(value, 0))) {
     baseline = 0;
     source = 'reference';
@@ -49,13 +50,13 @@ export function surfaceRequest(bounds, settings) {
   if (plan.error) return {error: plan.error};
   const params = Object.fromEntries(['clearance','below','distance','feed'].map(key => [key, Number(current[key] ?? {clearance:1,below:0.4,distance:1.4,feed:20}[key])]));
   if (Object.values(params).some(value => !Number.isFinite(value)) || params.clearance < 1 || params.clearance > 1.3 || params.below < 0.1 || params.below > 0.4 || params.clearance + params.below > 1.4 + 1e-9 || params.distance < 0.1 || params.distance > 1.4 || params.feed < 10 || params.feed > 60) return {error:'Maksymalny zjazd sondy: 1,4 mm. Prześwit 1–1,3 mm + zakres pod zerem 0,1–0,4 mm: razem maks. 1,4 mm. Pierwszy zjazd 0,1–1,4 mm; posuw 10–60 mm/min.'};
-  return {columns:plan.columns, rows:plan.rows, area:plan.area, ...params};
+  return {columns:plan.columns, rows:plan.rows, area:plan.area, ...params, ...(current.perimeterOnly ? {perimeterOnly:true} : {})};
 }
 
 export function surfaceMatches(map, jobId, settings, bounds) {
   if (!map?.id || map.job_id !== jobId || !bounds) return false;
   const current = settings || defaultSurfaceSettings(bounds);
-  return Number(current.columns) === map.columns && Number(current.rows) === map.rows && ['X','Y'].every(axis => current.area[axis].every((value,index) => Number(value) === map.area?.[axis]?.[index]));
+  return !!current.perimeterOnly === !!map.perimeterOnly && Number(current.columns) === map.columns && Number(current.rows) === map.rows && ['X','Y'].every(axis => current.area[axis].every((value,index) => Number(value) === map.area?.[axis]?.[index]));
 }
 
 export function createSurfacePlan(bounds, settings) {
@@ -93,7 +94,9 @@ export function createSurfacePlan(bounds, settings) {
       });
     }
   }
-  return {area, points, columns, rows,
+  const selectedPoints = settings.perimeterOnly ? points.filter(point=>point.number!==5).map((point,index)=>({...point,number:index+1})) : points;
+  if(settings.perimeterOnly && (columns!==3 || rows!==3))return {error:'Obrys wymaga 8 punktów obwodu w rozkładzie 3×3 bez środka.'};
+  return {area, points:selectedPoints, columns, rows, perimeterOnly:!!settings.perimeterOnly,
     spacingX: (area.X[1] - area.X[0]) / (columns - 1),
     spacingY: (area.Y[1] - area.Y[0]) / (rows - 1)};
 }

@@ -2,23 +2,26 @@ import {IconFileCode, IconFolder, IconFocus2, IconPlayerPlay, IconChevronDown, I
 import {SurfacePlan} from './SurfacePlan.jsx';
 import {surfaceHeights} from './surface-plan.js';
 import {LibraryPicker} from './LibraryPicker.jsx';
+import {ActivePcbFlow} from './PcbFlow.jsx';
 
-export function FilePanel({controller, job, cnc, free, manual, request, inputRef, upload, phase, onPhase, fileFeed, onFeed, originalFeed, onOriginal, feedValid, surfaceReady, surfaceSettings, onSurfaceSettings, useMap, onUseMap, ask}) {
+export function FilePanel({controller, job, cnc, free, manual, request, inputRef, upload, phase, onPhase, fileFeed, onFeed, originalFeed, onOriginal, feedValid, surfaceReady, surfaceSettings, onSurfaceSettings, useMap, onUseMap, ask, onOpenZero}) {
   const locked = !free || !!request;
   const fromFile = controller.active.value ? job.xy_feed == null : originalFeed;
   const selectedFeed = controller.active.value ? job.xy_feed : originalFeed ? null : Number(fileFeed);
   const heights = surfaceHeights(surfaceReady ? cnc.surface_map : null);
   const profile = cnc.calibration_profiles?.selected;
-  const calibrated = !!profile?.model;
-  const profileMatches = calibrated ? job.cam_profile?.fingerprint === profile.fingerprint && job.cam_profile?.id === profile.id : !job.cam_profile;
+  const calibrated = !!profile?.model || !!job.pcb_flow;
+  const profileMatches = profile?.model ? job.cam_profile?.fingerprint === profile.fingerprint && job.cam_profile?.id === profile.id : !job.cam_profile;
   const spread = heights.min === null ? null : (heights.max - heights.min).toLocaleString('pl-PL', {maximumFractionDigits:3});
   return <>
+    <ActivePcbFlow controller={controller} locked={locked} onOpenZero={onOpenZero} onPrepare={()=>{onPhase('prepare');requestAnimationFrame(()=>document.getElementById('surface-heading')?.scrollIntoView({block:'start'}));}}/>
     <LibraryPicker controller={controller} locked={locked}/>
     <div class="file-choice"><IconFileCode size={23}/><div class="file-name"><strong>{job.name || 'Nie wybrano pliku'}</strong><small>{job.name ? `${job.total} poleceń · F ≤ ${job.max_feed} mm/min · S ≤ ${job.max_power}` : 'G-code · do 1 MiB'}</small></div><button type="button" disabled={locked} title={locked ? 'Poczekaj na zakończenie zadania lub pomiaru' : 'Wczytaj program G-code'} onClick={() => inputRef.current.click()}><IconFolder size={17}/>Wybierz plik</button><input ref={inputRef} id="job-file" class="file-input" type="file" accept=".nc,.ngc,.gcode,.tap" disabled={locked} onChange={upload}/></div>
     {job.id ? <>
+      {job.pcb_flow?.kind==='drilling' && <p class="pcb-next">Po zmianie wiertła przejdź do zakładki Zero i wykonaj pomiar Z na nieobrobionej ramie miedzi. Zachowaj X/Y. Start bez nowego pomiaru jest zablokowany.</p>}
       <p class="file-profile">Profil CAM: {job.cam_profile ? (profileMatches ? profile.name : 'inny profil') : 'Domyślny · bez korekt'}. {profileMatches ? 'Geometria X/Y pochodzi z pliku.' : 'Plik nie odpowiada wybranemu profilowi. Oblicz CAM ponownie w kolekcji RPi albo wybierz profil zgodny z plikiem. Start zostanie zablokowany.'}{calibrated && ' Posuw i głębokość muszą pozostać według CAM.'}</p>
       <div class="job-phases" role="group" aria-label="Etap pracy z plikiem"><button type="button" aria-pressed={phase === 'prepare'} disabled={controller.active.value && !controller.probing.value} onClick={() => onPhase('prepare')}><IconFocus2 size={17}/>Przygotowanie</button><button type="button" aria-pressed={phase === 'cut'} disabled={controller.probing.value} onClick={() => onPhase('cut')}><IconPlayerPlay size={17}/>Frezowanie</button></div>
-      {phase === 'prepare' ? <SurfacePlan job={job} settings={surfaceSettings} onChange={onSurfaceSettings} locked={locked} canProbe={manual && cnc.probe_tested && cnc.probe_triggered === false && Array.isArray(cnc.position)} map={cnc.surface_map} onStart={params => ask('surface_start',params)} onStop={() => controller.send({action:'probe_stop'},true)} canStop={controller.known.value && controller.probing.value} useMap={useMap} onUseMap={onUseMap}/> : <div class="cut-settings">
+      {phase === 'prepare' ? (job.pcb_flow?.kind==='drilling' ? <section class="pcb-next"><strong>Nowe zero Z dla tego wiertła</strong><p>Pomiar jednego punktu na nieobrobionej, ciągłej miedzi ramy. Nie zmieniaj zera X/Y.</p><button type="button" disabled={locked} onClick={onOpenZero}>Przejdź do pomiaru zera Z</button></section> : <SurfacePlan job={job} settings={surfaceSettings} onChange={onSurfaceSettings} locked={locked} canProbe={manual && cnc.probe_tested && cnc.probe_triggered === false && Array.isArray(cnc.position)} map={cnc.surface_map} onStart={params => ask('surface_start',params)} onStop={() => controller.send({action:'probe_stop'},true)} canStop={controller.known.value && controller.probing.value} useMap={useMap} onUseMap={onUseMap}/>) : <div class="cut-settings">
         <h2>Parametry obróbki</h2>
         <fieldset disabled={locked || calibrated} class="file-feed"><label for="file-feed">Posuw XY</label><div class="feed-number"><input id="file-feed" type="number" min="1" max="300" step="1" disabled={fromFile || locked} value={controller.active.value ? (job.xy_feed ?? fileFeed) : fileFeed} onInput={event => onFeed(event.currentTarget.value)}/><span>mm/min</span></div><input id="file-feed-range" type="range" min="1" max="300" step="1" aria-label="Posuw frezowania XY" disabled={fromFile || locked} value={feedValid ? fileFeed : 1} onInput={event => onFeed(event.currentTarget.value)}/><div class="feed-presets">{[50,75,100,150].map(value => <button type="button" aria-pressed={selectedFeed === value} onClick={() => {onOriginal(false);onFeed(String(value));}}>{value}</button>)}</div><label class="inline-check"><input id="file-feed-original" type="checkbox" checked={fromFile} onChange={event => onOriginal(event.currentTarget.checked)}/>Według pliku</label></fieldset>
         {!originalFeed && !feedValid && <p class="field-error" role="alert">Posuw XY: wpisz wartość od 1 do 300 mm/min.</p>}

@@ -13,9 +13,11 @@ Inspect the toolpath and checks, then explicitly load a successful isolation
 program. Loading invalidates the previous surface map. Preparation and manual
 Start remain separate. No computation opens USB or sends controller commands.
 
-Only copper isolation is implemented. Drilling and outline cutting always show
-**nieprzygotowane**. A ready isolation file does not make the whole board ready.
-The optional original NC attachment workflow remains available.
+The source-package UI now also offers the complete guided
+[PCB workflow](pcb-workflow.md), with mandatory laminate thickness, round-hole
+drilling and a retained rectangular outline. Legacy isolation-only requests remain
+supported. A CAM result is not physical machining acceptance. The optional original
+NC attachment workflow remains available.
 
 ## Geometry contract
 

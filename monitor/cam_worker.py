@@ -38,6 +38,23 @@ def main():
         report, preview, content = generate(
             source, request["project"],
             request["profile"], request["clearanceMm"], directory)
+        if request.get("workflow"):
+            from monitor.pcb_flow import mechanical_programs
+            sequence, programs = mechanical_programs(
+                source, report["transform"], preview, request["workflow"],
+                request["clearanceMm"], directory)
+            report["sequence"] = [{
+                "file": "isolation.nc", "kind": "isolation",
+                "title": request["profile"]["name"],
+                "zPreparation": "grid3", "depthMm": report["depthMm"]
+            }, *sequence]
+            report["material"] = request["workflow"]
+            if content is not None:
+                for name, program in programs.items():
+                    (directory / name).write_text(program, encoding="ascii")
+                report["operations"] = {
+                    "isolation": "ready", "drilling": "ready",
+                    "outline": "ready"}
         (directory / "preview.json").write_text(json.dumps(preview))
         if content is not None:
             (directory / "isolation.nc").write_text(content, encoding="ascii")

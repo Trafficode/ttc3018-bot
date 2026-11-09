@@ -24,6 +24,7 @@ from monitor.library import PackageLibrary
 from monitor.library_http import library_request
 from monitor.cam import CamCollection
 from monitor.cam_http import cam_request
+from monitor.pcb_progress import PcbProgress
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_FRAME_BYTES = 2 * 1024 * 1024
@@ -231,6 +232,7 @@ class MonitorServer(ThreadingHTTPServer):
         )
         self.cam = CamCollection(
             Path.home() / ".local/share/bark-beetle/cam", self.library)
+        self.pcb_progress = PcbProgress(self.cam)
 
 
 class Handler(BaseHTTPRequestHandler):

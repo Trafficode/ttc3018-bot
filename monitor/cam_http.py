@@ -35,8 +35,13 @@ def cam_request(handler):
             respond(200, {"programs": collection.list(profile)})
         elif handler.command == "GET" and path.startswith("/api/cam/preview/"):
             respond(200, collection.preview(path.split("/")[-1]))
+        elif handler.command == "GET" and path.startswith("/api/cam/flow/"):
+            with collection.lock:
+                respond(200, handler.server.pcb_progress.read(
+                    path.split("/")[-1], status))
         elif handler.command == "POST" and path in (
-            "/api/cam/prepare", "/api/cam/cancel", "/api/cam/select"
+            "/api/cam/prepare", "/api/cam/cancel", "/api/cam/select",
+            "/api/cam/load-stage"
         ):
             origin = urlsplit(handler.headers.get("Origin", ""))
             if origin.netloc != handler.headers.get("Host"):
@@ -59,7 +64,12 @@ def cam_request(handler):
                 respond(202, collection.start(payload, profile))
             elif path == "/api/cam/cancel":
                 respond(200, collection.cancel(payload.get("id")))
+            elif path == "/api/cam/load-stage":
+                respond(200, handler.server.pcb_progress.load(
+                    payload.get("id"), payload, cnc))
             else:
+                if collection.get(payload.get("id")).get("workflow"):
+                    raise ValueError("Wczytaj bieżący etap zlecenia PCB.")
                 program = collection.program(payload.get("id"), profile)
                 # Existing job loader owns machine interlocks and invalidates
                 # the previous height map. Loading never starts execution.

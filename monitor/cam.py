@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import json
 import math
 import os
+import re
 from pathlib import Path
 import secrets
 import subprocess
@@ -28,7 +29,7 @@ def implementation_hashes():
     """Pin every geometry, output-validator and tool-model implementation."""
     return {name: digest((ROOT / "monitor" / name).read_bytes())
             for name in ("cam_geometry.py", "cam_worker.py", "jobs.py",
-                         "profiles.py")}
+                         "profiles.py", "pcb_flow.py")}
 
 
 def write_json(filename, value):
@@ -85,7 +86,9 @@ class CamCollection:
             raise ValueError("Brak integralności wyniku CAM.")
         for name, expected in item.get("artifacts", {}).items():
             if name not in ("isolation.nc", "preview.json", "request.json",
-                            "source.zip", "result.json"):
+                            "source.zip", "result.json", "outline.nc") and not (
+                re.fullmatch(r"drill-\d{2}\.nc", name)
+            ):
                 raise ValueError("Niepoprawny artefakt CAM.")
             filename = directory / name
             if filename.is_symlink() or (
@@ -110,7 +113,8 @@ class CamCollection:
                     continue
                 try:
                     item = self.get(directory.name)
-                    item["stale"] = item["profile"]["fingerprint"] != (
+                    item["stale"] = (not item.get("workflow") and
+                        item["profile"]["fingerprint"] !=
                         profile.get("fingerprint")) or item.get(
                             "implementationHashes") != implementation_hashes()
                     result.append(item)
@@ -147,6 +151,9 @@ class CamCollection:
                    "profile": copy.deepcopy(profile),
                    "clearanceMm": clearance, "engine": ENGINE}
         request["implementationHashes"] = implementation_hashes()
+        if payload.get("workflow") is not None:
+            from monitor.pcb_flow import validate_flow
+            request["workflow"] = validate_flow(payload["workflow"])
         with self.lock:
             if self.current:
                 raise RuntimeError("RPi już oblicza program CAM.")
@@ -222,6 +229,14 @@ class CamCollection:
                         directory / "isolation.nc").read_text("ascii"))
                     check_cam_program(item["profile"], program, {})
                     names.append("isolation.nc")
+                    for operation in item.get("report", {}).get(
+                        "sequence", []
+                    ):
+                        name = operation["file"]
+                        parse_program(name, (directory / name).read_text(
+                            "ascii"))
+                        if name not in names:
+                            names.append(name)
                 item["artifacts"] = {
                     name: digest((directory / name).read_bytes())
                     for name in names}
@@ -263,12 +278,14 @@ class CamCollection:
         filename = self.directory(item_id) / "preview.json"
         return json.loads(filename.read_text())
 
-    def program(self, item_id, profile):
+    def program(self, item_id, profile, operation_file="isolation.nc"):
         """Check original source, artifact and active profile before loading."""
         item = self.get(item_id)
         if item["state"] != "ready" or not item["report"]["checks"]["passed"]:
             raise ValueError("Ten wynik nie jest gotowym programem izolacji.")
-        if profile.get("fingerprint") != item["profile"]["fingerprint"] or (
+        if operation_file == "isolation.nc" and (
+            profile.get("fingerprint") != item["profile"]["fingerprint"]
+        ) or (
             item.get("implementationHashes") != implementation_hashes()
         ):
             raise ValueError("Profil lub silnik zmienił się; oblicz ponownie.")
@@ -276,10 +293,18 @@ class CamCollection:
         record = next(file for file in source["files"]
                       if file["sha256"] == item["sourceSha256"])
         self.library.file(source["id"], record["name"])
-        content = (self.directory(item_id) / "isolation.nc").read_text("ascii")
-        program = parse_program("isolation.nc", content)
-        check_cam_program(profile, program, {})
-        return {"name": "isolation-" + item_id[:8] + ".nc", "content": content}
+        if operation_file not in item["artifacts"] or not (
+            operation_file == "isolation.nc" or any(
+                operation["file"] == operation_file
+                for operation in item["report"].get("sequence", []))
+        ):
+            raise ValueError("Brak operacji w sprawdzonym zleceniu.")
+        content = (self.directory(item_id) / operation_file).read_text("ascii")
+        program = parse_program(operation_file, content)
+        if operation_file == "isolation.nc":
+            check_cam_program(profile, program, {})
+        return {"name": operation_file[:-3] + "-" + item_id[:8] + ".nc",
+                "content": content}
 
 # ---------------------------------------------------------------------------
 # end of file

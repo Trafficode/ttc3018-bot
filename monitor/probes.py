@@ -31,6 +31,8 @@ class ZProbe:
         self.cancel_requested = False
         self.command = None
         self.start_machine = None
+        self.completed_job_id = None
+        self.completed_offset = None
 
     def active(self):
         """Retain USB ownership through contact, zeroing and retraction."""
@@ -38,11 +40,14 @@ class ZProbe:
 
     def status(self):
         """Expose phase and outcome, never the browser lease."""
-        return {"state": self.state, "active": self.active(),
+        return {"kind": "point", "state": self.state, "active": self.active(),
+                "job_id": self.completed_job_id,
                 "error": self.error}
 
     def start(self, controller, payload):
         """Validate fresh physical state before queuing a bounded descent."""
+        self.completed_job_id = None
+        self.completed_offset = None
         if payload.get("confirmed") is not True:
             raise ValueError("Wymagane potwierdzenie sondowania.")
         distance = float(payload.get("distance", 0))
@@ -191,6 +196,10 @@ class ZProbe:
                     if report["probe_triggered"]:
                         raise RuntimeError("Sonda nadal aktywna po odsunięciu.")
                     self.state = "completed"
+                    self.completed_job_id = controller.jobs.job_id
+                    self.completed_offset = list(controller.offset) if (
+                        getattr(controller, "offset", None) is not None
+                    ) else None
                     self.lease = None
 
     def tick(self, controller):
