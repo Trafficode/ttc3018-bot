@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # cam.py
-# 2026-11-08
-# - Persistent CAM attempts and immutable artifacts, isolated from CNC execution.
+# 2026-11-13
+# - Freeze selected machining stages independently of unrelated V-bit models.
 # ---------------------------------------------------------------------------
 """Two logical stores: source packages remain untouched by generated results."""
 
@@ -125,9 +125,18 @@ class CamCollection:
 
     def start(self, payload, profile, process_profile=None):
         """Capture exact inputs before starting a single bounded subprocess."""
-        if not profile.get("model") or "depth" not in profile:
+        workflow = None
+        if payload.get("workflow") is not None:
+            from monitor.pcb_flow import selected_operations, validate_flow
+            workflow = validate_flow(payload["workflow"])
+        needs_isolation = workflow is None or "isolation" in (
+            selected_operations(workflow))
+        if needs_isolation and (
+            not profile.get("model") or "depth" not in profile
+        ):
             raise ValueError("Wybierz zmierzony profil ze stałą głębokością.")
-        if profile.get("fingerprint") != fingerprint(profile) or (
+        if needs_isolation and (
+            profile.get("fingerprint") != fingerprint(profile) or
             payload.get("profileFingerprint") != profile["fingerprint"]
         ):
             raise ValueError("Profil zmienił się; odśwież kolekcję.")
@@ -148,14 +157,13 @@ class CamCollection:
             raise ValueError("Wybierz pakiet CAD.")
         request = {"packageId": package["id"], "sourceSha256": record["sha256"],
                    "project": package["project"],
-                   "profile": copy.deepcopy(profile),
+                   "profile": copy.deepcopy(profile) if needs_isolation else {},
                    "clearanceMm": clearance, "engine": ENGINE}
         request["implementationHashes"] = implementation_hashes()
         if process_profile:
             request["processProfile"] = copy.deepcopy(process_profile)
-        if payload.get("workflow") is not None:
-            from monitor.pcb_flow import validate_flow
-            request["workflow"] = validate_flow(payload["workflow"])
+        if workflow is not None:
+            request["workflow"] = workflow
         with self.lock:
             if self.current:
                 raise RuntimeError("RPi już oblicza program CAM.")
@@ -227,10 +235,14 @@ class CamCollection:
                 if (directory / "preview.json").exists():
                     names.append("preview.json")
                 if item["state"] == "ready":
-                    program = parse_program("isolation.nc", (
-                        directory / "isolation.nc").read_text("ascii"))
-                    check_cam_program(item["profile"], program, {})
-                    names.append("isolation.nc")
+                    from monitor.pcb_flow import selected_operations
+                    if not item.get("workflow") or "isolation" in (
+                        selected_operations(item["workflow"])
+                    ):
+                        program = parse_program("isolation.nc", (
+                            directory / "isolation.nc").read_text("ascii"))
+                        check_cam_program(item["profile"], program, {})
+                        names.append("isolation.nc")
                     for operation in item.get("report", {}).get(
                         "sequence", []
                     ):
@@ -284,7 +296,7 @@ class CamCollection:
         """Check original source, artifact and active profile before loading."""
         item = self.get(item_id)
         if item["state"] != "ready" or not item["report"]["checks"]["passed"]:
-            raise ValueError("Ten wynik nie jest gotowym programem izolacji.")
+            raise ValueError("Ten wynik nie jest gotowym programem obróbki.")
         if operation_file == "isolation.nc" and (
             profile.get("fingerprint") != item["profile"]["fingerprint"]
         ) or (

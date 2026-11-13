@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # cam_geometry.py
-# 2026-11-08
-# - Conservative planar copper isolation and emitted-path sweep verification.
+# 2026-11-13
+# - Shared board geometry and independent mechanical/isolation preparation.
 # ---------------------------------------------------------------------------
 """Geometry-only CAM: no machine, serial, network or controller dependencies."""
 
@@ -250,6 +250,25 @@ def verify_sweep(copper, stock, program, diameter):
             "inaccessibleBoundaryMm": inaccessible.length,
             "toleranceMm": TOLERANCE,
             "scope": "Płaski model 2D; bez sprawdzenia mocowania i Z."}
+
+
+def mechanical_preview(data, project, clearance, directory):
+    """Validate the board datum without computing or requiring V-bit paths."""
+    copper, stock = read_archive(data, project, directory)
+    copper, stock, transform = transform_geometry(
+        copper, stock, project["side"])
+    preview = {"bounds": list(stock.bounds), "paths": [],
+               "copper": [[list(region.exterior.coords),
+                            *[list(ring.coords) for ring in region.interiors]]
+                           for region in polygons(copper)]}
+    report = {"engine": ENGINE, "transform": transform,
+              "clearanceMm": clearance,
+              "checks": {"passed": True, "findings": [],
+                         "scope": "mechanical board geometry only"},
+              "operations": {"isolation": "not_requested",
+                             "drilling": "not_prepared",
+                             "outline": "not_prepared"}}
+    return report, preview
 
 
 def generate(data, project, profile, clearance, directory):

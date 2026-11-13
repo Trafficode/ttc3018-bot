@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # process_http.py
-# 2026-11-09
+# 2026-11-13
 # - Operator-only recipe editing; never invokes controller execution actions.
 # ---------------------------------------------------------------------------
 """Shared workstation profiles replace repeated browser-only tool settings."""
@@ -64,7 +64,14 @@ def process_request(handler):
                 recipe = store.get(payload.get("id"))
                 if recipe["fingerprint"] != payload.get("fingerprint"):
                     raise ValueError("Profil zmienił się; odśwież dane.")
-                reference = recipe["isolation"]
+                reference = recipe.get("isolation")
+                if "kind" in payload and payload["kind"] not in (
+                    "drilling", "outline"
+                ):
+                    raise ValueError("Niepoprawny rodzaj profilu.")
+                if reference is None or payload.get("kind"):
+                    respond(200, store.select(payload))
+                    return True
                 available = status.get("calibration_profiles", {}).get(
                     "profiles", [])
                 if not any(value.get("id") == reference["id"] and value.get(

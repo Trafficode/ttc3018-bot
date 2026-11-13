@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # cam_http.py
-# 2026-11-08
+# 2026-11-13
 # - Operator-only CAM preparation, readback and explicit program loading.
 # ---------------------------------------------------------------------------
 """Collection ingestion credentials cannot compute, select or execute CAM."""
@@ -69,9 +69,12 @@ def cam_request(handler):
                     "state") in ("running", "paused", "pausing", "resuming",
                                  "draining") or status.get("probing"):
                     raise RuntimeError("Rozłącz CNC przed obliczaniem CAM.")
-                if payload.get("processProfileId"):
+                if payload.get("processProfileId") or (
+                    "processProfiles" in payload
+                ):
                     recipe, workflow, clearance = (
-                        handler.server.process_profiles.resolve(payload, profile))
+                        handler.server.process_profiles.resolve(
+                            payload, profile))
                     payload = {**payload, "workflow": workflow,
                                "clearanceMm": clearance}
                     respond(202, collection.start(payload, profile, recipe))

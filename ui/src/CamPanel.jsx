@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'preact/hooks';
 import {IconChevronLeft, IconRefresh, IconTool, IconAlertTriangle} from '@tabler/icons-preact';
 import {FlowSetup, FlowRun} from './PcbFlow.jsx';
+import {AppSelect} from './AppSelect.jsx';
 
 const stateNames = {running:'Obliczanie na RPi', ready:'Izolacja gotowa', blocked:'Geometria zablokowana', failed:'Błąd obliczeń', cancelled:'Anulowano', interrupted:'Przerwano', corrupt:'Uszkodzony wynik'};
 
@@ -9,7 +10,7 @@ export function CamPreparation({source, controller, api, onPrepared, locked,onOp
   const [filename, setFilename] = useState(cad[0]?.name || '');
   return <section class="cam-preparation" aria-label="Przygotowanie CAM">
     <h3><IconTool size={18}/>Wykonaj PCB · {source.project.side}</h3>
-    {cad.length > 1 && <label>Archiwum CAD<select disabled={locked} value={filename} onChange={event => setFilename(event.currentTarget.value)}>{cad.map(file=><option key={file.name}>{file.name}</option>)}</select></label>}
+    {cad.length > 1 && <AppSelect id="cam-archive" label="Archiwum CAD" value={filename} disabled={locked} onChange={setFilename} options={cad.map(file=>({value:file.name,label:file.name}))}/>}
     <FlowSetup source={source} controller={controller} api={api} onPrepared={onPrepared} locked={locked} filename={filename} onOpenProfiles={onOpenProfiles}/>
   </section>;
 }
@@ -28,6 +29,7 @@ function ToolpathPreview({geometry, findings}) {
     geometry.copper.forEach(rings=>{context.beginPath();rings.forEach(ring=>{trace(ring);context.closePath();});context.fill('evenodd');});
     context.strokeStyle='#087f8c';context.lineWidth=.8;
     geometry.paths.forEach(path=>{context.beginPath();trace(path);context.stroke();});
+    (geometry.holes||[]).forEach(hole=>{const[x,y]=point(hole.point);context.beginPath();context.arc(x,y,hole.diameterMm*scale/2,0,Math.PI*2);context.stroke();});
     context.fillStyle='#bb2525';
     findings.forEach(item=>{const[x,y]=point([item.x,item.y]);context.beginPath();context.arc(x,y,4,0,Math.PI*2);context.fill();});
   },[geometry,findings]);
@@ -62,16 +64,16 @@ export function CamPrograms({controller, api, locked, initial, onLoaded, onSourc
   return <section class="cam-programs" aria-label="Programy obróbki">
     <div class="library-heading">{selected ? <button type="button" onClick={()=>setSelected(null)}><IconChevronLeft size={18}/>Wszystkie programy</button> : <strong>Programy obróbki</strong>}<button type="button" aria-label="Odśwież programy" onClick={refresh}><IconRefresh size={18}/></button></div>
     {error && <p role="alert">{error}</p>}
-    {!selected ? <div class="library-list">{!items.length && <p>Brak programów. Wybierz paczkę z Tractor i przygotuj izolację na RPi.</p>}{items.map(value=><button type="button" key={value.id} onClick={()=>setSelected(value.id)}><span><strong>{value.project?.name || 'Nieczytelny wynik'}</strong><small>{value.profile?.name} · {value.createdAt ? new Date(value.createdAt).toLocaleString('pl-PL') : ''}</small></span><span>{value.stale && value.state==='ready' ? 'Profil zmieniony' : stateNames[value.state]}</span></button>)}</div> : !item ? <p role="status">Wczytywanie wyniku…</p> : <>
-      <div class="library-project" ref={heading} tabIndex={-1}><strong>{item.project?.name}</strong><small>{item.profile?.name} · PCB {item.project?.boardHash.slice(0,12)} · {item.project?.side}</small></div>
+    {!selected ? <div class="library-list">{!items.length && <p>Brak programów. Wybierz paczkę z Tractor i przygotuj operacje na RPi.</p>}{items.map(value=><button type="button" key={value.id} onClick={()=>setSelected(value.id)}><span><strong>{value.project?.name || 'Nieczytelny wynik'}</strong><small>{value.processProfile?.name || value.profile?.name} · {value.createdAt ? new Date(value.createdAt).toLocaleString('pl-PL') : ''}</small></span><span>{value.stale && value.state==='ready' ? 'Profil zmieniony' : stateNames[value.state]}</span></button>)}</div> : !item ? <p role="status">Wczytywanie wyniku…</p> : <>
+      <div class="library-project" ref={heading} tabIndex={-1}><strong>{item.project?.name}</strong><small>{item.processProfile?.name || item.profile?.name} · PCB {item.project?.boardHash.slice(0,12)} · {item.project?.side}</small></div>
       <p class="cam-result-state" role="status">{item.state==='blocked' && <IconAlertTriangle size={18}/>}<strong>{item.workflow && item.state==='ready' ? 'Programy PCB gotowe' : stateNames[item.state]}</strong>{item.durationSeconds != null && <small>{item.durationSeconds} s obliczeń</small>}</p>
       {item.state==='running' && <><progress aria-label="Obliczanie izolacji"/><p>RPi oblicza ścieżki i sprawdza przejazd frezu. Możesz zamknąć kolekcję.</p><button type="button" disabled={busy} onClick={()=>action('cancel')}>Anuluj obliczenia</button></>}
       {item.error && <p role="alert">{item.error}</p>}
       {item.packageId && item.state!=='running' && <button type="button" onClick={()=>onSource(item.packageId)}>Wróć do paczki · oblicz ponownie</button>}
       {item.stale && <p role="alert">Profil, kalibracja lub silnik CAM zmieniły się. Oblicz izolację ponownie z paczki źródłowej.</p>}
       {item.report && <>
-        <div class="cam-operation-status"><strong>Izolacja · {item.state==='ready' ? 'gotowa' : 'zablokowana'}</strong><span>{item.workflow ? item.state==='ready' ? 'Wiercenie i obrys · programy gotowe' : 'Zlecenie zablokowane · żaden etap nie zostanie wczytany' : 'Wiercenie i obrys · nieprzygotowane'}</span></div>
-        <dl class="cam-facts"><div><dt>Rowek / głębokość</dt><dd>{item.report.diameterMm.toFixed(3)} / {item.report.depthMm} mm</dd></div><div><dt>Program</dt><dd>{item.report.commands} poleceń</dd></div></dl>
+        <div class="cam-operation-status"><strong>{item.workflow ? 'Wybrane operacje PCB' : 'Izolacja'} · {item.state==='ready' ? 'gotowe' : 'zablokowane'}</strong><span>{item.workflow ? (item.report.sequence||[]).map(operation=>operation.title).join(' · ') : 'Wiercenie i obrys · nieprzygotowane'}</span></div>
+        {Number.isFinite(item.report.diameterMm) && <dl class="cam-facts"><div><dt>Rowek / głębokość</dt><dd>{item.report.diameterMm.toFixed(3)} / {item.report.depthMm} mm</dd></div><div><dt>Program</dt><dd>{item.report.commands} poleceń</dd></div></dl>}
         {geometry && <ToolpathPreview geometry={geometry} findings={findings}/>}
         {findings.length > 0 && <details open><summary>Problemy geometrii ({findings.length})</summary><ul class="cam-findings">{findings.map((value,index)=><li key={index}>{value.message} <strong>X {value.x.toFixed(2)} · Y {value.y.toFixed(2)} mm</strong></li>)}</ul><p>Źródłowe PCB i średnica frezu pozostają bez zmian.</p></details>}
         <details><summary>Co sprawdzono i czego wynik nie potwierdza</summary><p>Składnia GRBL, profil, parametry, ruchy po wycofaniu Z, przejazd frezu, chroniona miedź i rozdzielenie {item.report.checks.protectedIslands} obszarów miedzi. Model płaski 2D; bez kontroli zacisków, rzeczywistej powierzchni i próbnego frezowania.</p><p>{item.report.transform.datum}. {item.report.transform.mirrorX ? 'Odbicie X dla B.Cu.' : 'Bez odbicia.'} Wycofanie Z {item.report.clearanceMm} mm.</p><small>Pakiet {item.packageId.slice(0,12)} · profil {item.profile.fingerprint.slice(0,12)} · {item.report.engine}</small></details>

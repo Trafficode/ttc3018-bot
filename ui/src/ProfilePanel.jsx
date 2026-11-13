@@ -1,5 +1,6 @@
 import {useEffect, useState} from 'preact/hooks';
 import {ProfileSettings, defaultProfile} from './Profiles.jsx';
+import {AppSelect} from './AppSelect.jsx';
 import './profile-test.css';
 
 const mm = value => Number(value).toLocaleString('pl-PL',{maximumFractionDigits:3});
@@ -48,7 +49,7 @@ export function ProfilePanel({controller, cnc, ask}) {
   const inRepeatArea=cnc.position && map?.area && cnc.position[0]>=map.area.X[0]-.002 && cnc.position[0]<=map.area.X[1]+.002 && cnc.position[1]>=map.area.Y[0]-.002 && cnc.position[1]<=map.area.Y[1]+.002 && cnc.position[2]>=0 && cnc.position[2]<=3;
   const selectReady=controller.known.value&&!busy&&(!cnc.connected||controller.manualReady.value);
   return <section class="service-panel profile-panel"><div class="service-title"><h2>Profile</h2><span>Serwis działa niezależnie</span></div>
-    <label class="parameter-field profile-choice" for="profile-choice">Wybierz profil<select id="profile-choice" value={selected.id} disabled={!selectReady} onChange={e=>controller.send({action:'profile_select',profile_id:e.currentTarget.value})}>{(cnc.calibration_profiles?.profiles||[defaultProfile]).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+    <AppSelect id="profile-choice" label="Profil frezu V" value={selected.id} disabled={!selectReady} onChange={id=>controller.send({action:'profile_select',profile_id:id})} options={(cnc.calibration_profiles?.profiles||[defaultProfile]).map(profile=>({value:profile.id,label:profile.name}))}/>
     <div class="profile-subtabs" role="tablist" aria-label="Widok profilu" onKeyDown={tabKey}><button id="profile-settings-tab" type="button" role="tab" tabIndex={tab==='settings'?0:-1} aria-selected={tab==='settings'} aria-controls="profile-content" onClick={()=>setTab('settings')}>Ustawienia</button><button id="profile-test-tab" type="button" role="tab" tabIndex={tab==='test'?0:-1} aria-selected={tab==='test'} aria-controls="profile-content" onClick={()=>setTab('test')}>Test profilu</button></div>
     <div id="profile-content" role="tabpanel" aria-labelledby={tab==='settings'?'profile-settings-tab':'profile-test-tab'}>
     {tab==='settings'?<ProfileSettings controller={controller} cnc={cnc} ask={ask}/>:<>

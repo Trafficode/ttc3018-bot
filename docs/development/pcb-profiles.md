@@ -1,79 +1,102 @@
 # PCB machining profiles
 
-A job selects one saved setup and supplies measured laminate thickness. Tool
-parameters are configured once in Profiles. The complete recipe is stored on the
-station, so desktop and phone use the same values. This is separate from the
-measured V-bit width/depth calibration; each recipe pins that calibration too.
+Profiles use an app dropdown: **Ścieżki**, **Wiercenie**, **Obrys**.
+Printed circuit board (PCB) jobs select operations and enter measured laminate
+thickness once. Tool values are stored on the station for phone and desktop.
+Drilling and outline profiles do not require V-bit calibration.
 
-## What belongs where
+## Parameters
 
-| Scope | Values | Reason |
+| Profile | Basic | Advanced |
 | --- | --- | --- |
-| Every board | Profile choice, measured laminate thickness, mounting confirmation | Thickness changes cut depth; probing Z does not measure thickness. |
-| Saved profile: tools | Drill feed and S; end-mill XY feed, plunge, S, step-down and cutting length | These describe the actual cutter/material setup. Never infer them from V-bit settings. |
-| Saved profile: mounting | Backing thickness, travel clearance | Reuse while the physical mounting remains unchanged. Update when backing or clamps change. |
-| Advanced profile | Drill point angle, breakthrough allowance, thickness/Z uncertainty, skin and tab dimensions | Required geometry or declared margins, rarely changed per board. Information buttons explain each. |
-| Optional job override | Skin thickness or four-tab retention | Reuses the recipe while allowing the requested method of separation. |
-| Calculated | Drill diameters/groups from source, tip correction, final depths, pass count | Do not ask the operator to enter derived values. |
+| Tracks / V-bit | Copper depth, tip, angle, XY feed, calibration | Plunge feed, spindle control |
+| Drilling | Diameter, plunge feed, tip overrun into backing, travel clearance | None |
+| Outline | Diameter, XY/Z feed, step-down, clearance, separation mode, conditional remaining material and backing entry | None |
 
-The engine supports a 1 mm outline end mill; its diameter is not an editable job
-field. Initial skin 0.20 mm, uncertainty 0.05 mm, clearance 3 mm, breakthrough
-0.20 mm and tabs 3 by 0.30 mm are existing editable setup values, not validated
-universal cutting settings. The initial 118-degree drill point must match the
-actual drills. Feeds, S, cutting length and backing thickness remain blank in a
-new profile until supplied. S is controller scale, not measured spindle RPM.
+Outline tools support 0.5–3 mm diameters; the centreline uses the actual radius.
+Round source holes remain separate stages by diameter, 0.3–4 mm. An exact drill
+diameter must match every source group. Use “Według pliku PCB” for several sizes.
+The engine never silently omits or enlarges holes. Slots remain unsupported.
 
-Material and mounting expands with a visible chevron. It shows saved backing,
-clearance and uncertainty, plus the job's optional separation override. A new
-material, cutter or mounting needs a suitable profile; hiding a field does not
-remove its server validation or physical verification requirement.
-The skin/tab selector uses the application's own popover in both job and profile
-views, including selected-state marking, arrow keys, Enter, Escape and Tab.
+Preset dropdowns support arrow keys, Enter, Escape and Tab. Existing non-preset
+values remain available. A numeric keyboard opens only after **Własna wartość…**.
+Only tracks have an advanced section. Spindle percentage represents
+the controller's S0–S1000 scale: 30% sends S300. It is not RPM or measured power.
+New drilling and simple outline profiles use fixed S1000 (100% control).
 
-## Storage and revision rules
+Drilling tip depth is exactly laminate thickness plus `drillOverrunMm` (0.05–5 mm).
+The operator includes the whole drill point and allowance for uneven material in
+this value and provides sufficiently thick backing. There is no automatic cone
+addition, declared accuracy budget or assumed backing thickness. Feed and tip
+overrun start blank; preset options are choices, not cutting recommendations.
+Simple outline profiles use `outlineDepthMode: remaining`. XY/Z feed starts blank.
+Skin cuts end at stock thickness minus `remainingMm`. Tabs keep that thickness
+only at four bridges; between them the cut enters backing by `millOverrunMm`.
+Through cuts use backing entry without retained material. Irrelevant fields are
+hidden and excluded from stored values. Stock thickness is still entered per job.
 
-The version-1 JSON store is `~/.local/share/bark-beetle/pcb-profiles.json`.
-It contains an active ID and at most 30 recipes. Each recipe has an ID, name,
-revision, fingerprint, V-bit calibration reference and validated values. Measured
-laminate thickness is deliberately excluded. Writes are atomic; malformed stored
-data is reported and never silently replaced. This operator data is not in Git.
+Step-down is a basic editable field, initially 0.2 mm. It is saved explicitly.
+There is no Advanced section. Tab width is automatic:
+max(3 mm, cutter diameter + 2 mm), displayed beside the separation settings.
+New UI saves omit a tab-width override. Old stored overrides remain unchanged
+until a reviewed edit is saved; old APIs remain compatible. The server resolves
+defaults; engine hashes make results stale when those defaults change.
+There are no assumed cutting/backing lengths or separate uncertainty input.
+The operator provides adequate cutter length, backing and setup allowances.
+Full-through cutting needs a separate job confirmation of secure workholding.
 
-Saving requires explicit tool/mounting review. Editing uses the previous
-fingerprint to reject stale browser data. Selection verifies and selects the
-pinned V-bit calibration using the existing controller owner; it does not open
-USB, probe or start a program. Saving and selection share the Start lock and are
-blocked during an active job or probe.
+## Storage and compatibility
 
-CAM requests freeze the full profile snapshot. The server accepts only measured
-thickness and optional skin/retention from the material override. It resolves
-feeds, S and clearance from the saved profile. A changed recipe requires a new
-calculation and blocks stage load and Start, rather than changing old NC files.
+The version-1 store remains at
+`~/.local/share/bark-beetle/pcb-profiles.json`, outside Git, with at most 30
+records. Typed records add `kind: drilling|outline`; `activeByKind` holds their
+separate selections. Records contain ID, name, revision, fingerprint and tool
+values, without laminate thickness. Writes are atomic. Corruption is reported.
 
-## API
+Older combined recipes keep their original fingerprints and V-bit binding.
+Their original calculation remains available through the legacy API. The new UI
+requires an explicit tip overrun before using an old drilling profile. Editing
+and saving a typed profile replaces its old drill values with the four simple
+values and increments its revision; editing a combined recipe creates a typed
+copy and preserves the original. No stored file is silently migrated. The old
+combined and isolation-only APIs remain compatible.
 
-All routes require the existing `X-PiloMill-Token`. POST also requires same-origin
-JSON, at most 8192 bytes. The package-ingestion bearer token grants no access.
+Existing outline profiles retain their original values and validation. Editing
+them maps skin/tab height to remaining material and breakthrough to backing entry;
+only an explicit reviewed save replaces them with the simple profile format.
+
+Saving requires tool review and the previous fingerprint for edits.
+Save/select shares the Start lock and is blocked during machining or probing.
+Typed mechanical selection never selects a V-bit or contacts the controller.
+Legacy selection without a mechanical kind keeps its original V-bit behavior.
+
+## Computer-aided manufacturing (CAM)
+
+Jobs can request all stages, drilling and outline, or any single operation.
+Only selected tools are required. Mechanical-only jobs validate the real source
+archive and shared coordinates without a V-bit model or isolation sweep claim.
+When isolation is selected, its existing sweep check gates the entire result.
+
+Requests freeze selected profile snapshots and per-operation values.
+Browser feed overrides are ignored. Profile or engine changes invalidate old
+results and require recalculation before stage load or Start.
+
+All routes require `X-PiloMill-Token`; POST requires same-origin JSON.
 
 | Route | Payload / response |
 | --- | --- |
-| GET `/api/pcb-profiles` | Version, active ID, profiles and storage error. |
-| POST `/api/pcb-profiles/save` | Name, values, `confirmedTools: true`; updates add ID and `expectedFingerprint`. Returns the saved recipe. |
-| POST `/api/pcb-profiles/select` | ID and fingerprint. Returns selected recipe after checking its V-bit binding. |
-| POST `/api/cam/prepare` | Source identity, `profileFingerprint`, `processProfileId`, `processFingerprint`, material, `confirmedDatum` and `confirmedSetup`. Returns the immutable CAM attempt. |
+| GET `/api/pcb-profiles` | Version, active IDs, records and storage error |
+| POST `/api/pcb-profiles/save` | Kind, name, values, confirmedTools; edits add ID and expectedFingerprint |
+| POST `/api/pcb-profiles/select` | ID, fingerprint, optional mechanical kind |
+| POST `/api/cam/prepare` | Source, operations, processProfiles by kind with ID/fingerprint, material.thicknessMm, confirmations; isolation also supplies profileFingerprint and clearanceMm |
 
-Legacy explicit-workflow CAM requests remain compatible. New UI requests use the
-saved-profile path. No endpoint starts machining as a side effect of profile use.
+Preparation runs offline with CNC disconnected. Stage load, tool change, fresh Z
+preparation and manual Start remain separate operator actions.
 
-## Compact navigation and verification
+## Verification
 
-Main tools are Move, Zero, File and Profiles. Manual spindle controls are an
-expandable section in Move. Camera and Service use labelled icon buttons in the
-topbar. Camera is closed initially and allocates space only when opened. The map
-preview remains available inside File even while camera is closed.
-
-Browser checks cover desktop 1440 by 1024 and phone 390 by 844, empty-profile
-onboarding, profile editing, one visible numeric job field, disclosure arrows,
-information popovers and Escape, optional skin override and the resulting CAM
-payload. Profile writes and CAM preparation are intercepted in browser tests;
-no test recipe is inserted into the production station store. Backend tests use
-temporary stores and mocked serial ports. Physical milling remains unverified.
+Tests use temporary stores, real source fixtures and mocked controllers.
+They cover legacy data, stale snapshots, independent values, hole grouping,
+cutter-radius offsets, full-through confirmation and actual worker output
+without V-bit calibration. Desktop/phone checks intercept profile and CAM writes.
+No test recipe is saved on the station. Physical cutting remains unverified.

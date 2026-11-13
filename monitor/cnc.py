@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # cnc.py
-# 2026-10-24
-# - Exclusive USB owner for file jobs, grid maps and service depth trials.
+# 2026-11-13
+# - Exclusive USB owner with explicit drill-tip overrun and fresh-Z gates.
 # ---------------------------------------------------------------------------
 """Manual CNC access; never reconnect, home, unlock or start jobs implicitly."""
 
@@ -540,7 +540,10 @@ class Controller:
                         execution or self.jobs.program, surface
                     )
                 if flow and flow["kind"] == "drilling":
-                    if flow.get("breakthroughMm", 0) < (
+                    # New profiles declare the entire tip overrun. Their user
+                    # supplies the allowance; old recipes keep the prior gate.
+                    if "drillOverrunMm" not in flow and (
+                        flow.get("breakthroughMm", 0) <
                         flow.get("surfaceSpreadMm", 0)
                         + flow.get("uncertaintyMm", 0)
                     ):

@@ -66,6 +66,7 @@ function Camera() {
 
 function App() {
   const [tab, setTab] = useState('file');
+  const [profileKind,setProfileKind] = useState('isolation');
   const [cameraOpen,setCameraOpen]=useState(false);
   const previousTool=useRef('file');
   const [jobPhase, setJobPhase] = useState('cut');
@@ -166,8 +167,8 @@ function App() {
     <div class="tool-scroll"><section id={`tool-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`} tabIndex={0}>
     {tab === 'move' && <JogPanel controller={controller} cnc={cnc} step={step} onStep={setStep} customStep={customStep} onCustomStep={setCustomStep} feed={feed} onFeed={setFeed}/>}
     {tab === 'zero' && <ZeroPanel controller={controller} cnc={cnc} ask={ask} distance={probeDistance} onDistance={setProbeDistance} feed={probeFeed} onFeed={setProbeFeed} reason={probeReason}/>}
-    {tab === 'file' && <FilePanel controller={controller} job={job} cnc={cnc} free={free} manual={manual} request={request} inputRef={inputRef} upload={upload} phase={jobPhase} onPhase={setJobPhase} fileFeed={fileFeed} onFeed={setFileFeed} originalFeed={originalFeed} onOriginal={setOriginalFeed} feedValid={fileFeedValid} surfaceReady={surfaceReady} surfaceSettings={surfaceSettings} onSurfaceSettings={setSurfaceSettings} useMap={useSurfaceMap} onUseMap={setUseSurfaceMap} ask={ask} onOpenZero={()=>setTab('zero')} onOpenProfiles={()=>setTab('profiles')}/>}
-    {tab === 'profiles' && <ProfileHub controller={controller} cnc={cnc} ask={ask}/>}
+    {tab === 'file' && <FilePanel controller={controller} job={job} cnc={cnc} free={free} manual={manual} request={request} inputRef={inputRef} upload={upload} phase={jobPhase} onPhase={setJobPhase} fileFeed={fileFeed} onFeed={setFileFeed} originalFeed={originalFeed} onOriginal={setOriginalFeed} feedValid={fileFeedValid} surfaceReady={surfaceReady} surfaceSettings={surfaceSettings} onSurfaceSettings={setSurfaceSettings} useMap={useSurfaceMap} onUseMap={setUseSurfaceMap} ask={ask} onOpenZero={()=>setTab('zero')} onOpenProfiles={kind=>{setProfileKind(kind||'isolation');setTab('profiles');}}/>}
+    {tab === 'profiles' && <ProfileHub controller={controller} cnc={cnc} ask={ask} kind={profileKind} onKindChange={setProfileKind}/>}
     {tab === 'service' && <ServicePanel controller={controller} cnc={cnc} ask={ask}/>}
     {tab === 'file' && job.id && cnc.calibration?.profile && !cnc.calibration_profiles?.selected?.model && <label class="service-check"><input id="file-service-depth" type="checkbox" disabled={!free || !!request} checked={useServiceDepth} onChange={event => setUseServiceDepth(event.currentTarget.checked)}/>Użyj zagłębienia z Serwisu: {cnc.calibration.profile.depth.toFixed(2)} mm · jeden poziom cięcia, bez ramp</label>}
     {tab === 'move' && <Disclosure title="Wrzeciono" className="movement-spindle"><ParameterField id="spindle-power" label="Ustawienie wrzeciona · S" value={power} onChange={setPower} options={[100,200,300,400,500,600,700,800,900,1000]} min={1} max={1000} disabled={!manual} format={v=>`S${v} · ${v/10}%`} help="S1000 to pełna skala sterownika; S300 to 30%. To nie jest pomiar obrotów RPM."/><input id="spindle-range" type="range" aria-label="Ustawienie wrzeciona suwakiem" min="1" max="1000" step="1" value={powerValid ? power : 1} disabled={!manual} onInput={event => setPower(event.currentTarget.value)}/><div class="button-row spindle-actions"><Button class="primary" icon={IconPlayerPlay} disabled={!manual || !powerValid} onClick={() => ask('spindle_on')}>Włącz</Button><Button icon={IconPlayerStop} disabled={!manual} onClick={() => controller.send({action: 'spindle_off'})}>Wyłącz</Button></div><p class="hint">Zmiana listy lub suwaka nie włącza wrzeciona. Ustawienie jest wysyłane po kliknięciu Włącz.</p></Disclosure>}

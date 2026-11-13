@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # test_process_profiles.py
-# 2026-11-09
+# 2026-11-13
 # - Saved recipes, fixed tool parameters, stock overrides and revision guards.
 # ---------------------------------------------------------------------------
 """Temporary files and fake calibration data only; no device access."""
@@ -176,9 +176,19 @@ class RecipeTests(unittest.TestCase):
         server.cnc.action.assert_called_once_with("profile_select", {
             "profile_id": profile()["id"]})
         server.cnc.action.reset_mock()
+        server.cnc.status.return_value["calibration_profiles"] = {}
+        from test_independent_tools import tool_values
+        code, independent = request("/api/pcb-profiles/save", {
+            "name": "Independent", "kind": "drilling",
+            "values": tool_values("drilling"), "confirmedTools": True})
+        self.assertEqual(code, 200)
+        self.assertEqual(request("/api/pcb-profiles/select", {
+            "id": independent["id"], "kind": "drilling",
+            "fingerprint": independent["fingerprint"]})[0], 200)
+        server.cnc.action.assert_not_called()
         server.cnc.status.return_value["job"]["state"] = "running"
         self.assertEqual(request("/api/pcb-profiles/save", payload)[0], 400)
-        self.assertEqual(len(self.store.status()["profiles"]), 1)
+        self.assertEqual(len(self.store.status()["profiles"]), 2)
         server.cnc.action.assert_not_called()
 
 

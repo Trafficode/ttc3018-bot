@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # cam_worker.py
-# 2026-11-08
-# - Bounded offline CAM subprocess; writes artifacts but has no machine API.
+# 2026-11-13
+# - Compute only selected operations without a V-bit dependency for mechanics.
 # ---------------------------------------------------------------------------
 """Invoked by the collection runner in a private-device systemd sandbox."""
 
@@ -26,7 +26,8 @@ def main():
     try:
         if version("gerbonara") != "1.6.3" or version("shapely") != "2.2.0":
             raise ValueError("Niezgodna wersja zależności CAM.")
-        from monitor.cam_geometry import generate
+        from monitor.cam_geometry import generate, mechanical_preview
+        from monitor.pcb_flow import selected_operations
         request = json.loads((directory / "request.json").read_text())
         source = (directory / "source.zip").read_bytes()
         if hashlib.sha256(source).hexdigest() != request["sourceSha256"]:
@@ -35,30 +36,47 @@ def main():
             filename = Path(__file__).parent / name
             if hashlib.sha256(filename.read_bytes()).hexdigest() != expected:
                 raise ValueError("Silnik CAM zmienił się; oblicz ponownie.")
-        report, preview, content = generate(
-            source, request["project"],
-            request["profile"], request["clearanceMm"], directory)
+        requested = selected_operations(request["workflow"]) if (
+            request.get("workflow")) else ["isolation"]
+        if "isolation" in requested:
+            report, preview, content = generate(
+                source, request["project"], request["profile"],
+                request["clearanceMm"], directory)
+            ready = content is not None
+        else:
+            report, preview = mechanical_preview(
+                source, request["project"], request["clearanceMm"], directory)
+            content = None
+            ready = True
         if request.get("workflow"):
             from monitor.pcb_flow import mechanical_programs
             sequence, programs = mechanical_programs(
                 source, report["transform"], preview, request["workflow"],
                 request["clearanceMm"], directory)
-            report["sequence"] = [{
-                "file": "isolation.nc", "kind": "isolation",
-                "title": request["profile"]["name"],
-                "zPreparation": "grid3", "depthMm": report["depthMm"]
-            }, *sequence]
+            report["sequence"] = sequence
+            preview["paths"].extend(operation["path"] for operation in sequence
+                                    if operation["kind"] == "outline")
+            preview["holes"] = [{"point": point,
+                                 "diameterMm": operation["diameterMm"]}
+                                for operation in sequence
+                                if operation["kind"] == "drilling"
+                                for point in operation["points"]]
+            if "isolation" in requested:
+                report["sequence"].insert(0, {
+                    "file": "isolation.nc", "kind": "isolation",
+                    "title": request["profile"]["name"],
+                    "zPreparation": "grid3", "depthMm": report["depthMm"]})
             report["material"] = request["workflow"]
-            if content is not None:
+            if ready:
                 for name, program in programs.items():
                     (directory / name).write_text(program, encoding="ascii")
-                report["operations"] = {
-                    "isolation": "ready", "drilling": "ready",
-                    "outline": "ready"}
+                report["operations"] = {kind: "ready" if kind in requested
+                                        else "not_requested" for kind in (
+                                            "isolation", "drilling", "outline")}
         (directory / "preview.json").write_text(json.dumps(preview))
         if content is not None:
             (directory / "isolation.nc").write_text(content, encoding="ascii")
-        result = {"state": "ready" if content is not None else "blocked",
+        result = {"state": "ready" if ready else "blocked",
                   "report": report}
     except Exception as error:
         result = {"state": "failed", "error": str(error)[:500]}
