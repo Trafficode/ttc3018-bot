@@ -6,9 +6,12 @@
 """Validate monitoring without camera, GPIO, USB or Tailscale access."""
 
 import json
+from pathlib import Path
+import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -71,9 +74,14 @@ class HttpTests(unittest.TestCase):
     """Exercise a loopback server without starting hardware workers."""
 
     def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
         self.state = State()
         self.stop = threading.Event()
-        self.server = MonitorServer(0, self.state, self.stop)
+        with patch("monitor.server.Path.home", return_value=Path(
+            temporary.name
+        )):
+            self.server = MonitorServer(0, self.state, self.stop)
         self.thread = threading.Thread(target=self.server.serve_forever)
         self.thread.start()
         port = self.server.server_address[1]

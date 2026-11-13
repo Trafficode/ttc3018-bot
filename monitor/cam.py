@@ -29,7 +29,7 @@ def implementation_hashes():
     """Pin every geometry, output-validator and tool-model implementation."""
     return {name: digest((ROOT / "monitor" / name).read_bytes())
             for name in ("cam_geometry.py", "cam_worker.py", "jobs.py",
-                         "profiles.py", "pcb_flow.py")}
+                         "profiles.py", "pcb_flow.py", "project_bundle.py")}
 
 
 def write_json(filename, value):

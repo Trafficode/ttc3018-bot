@@ -54,7 +54,7 @@ class PcbProgress:
             or progress["loaded"]["jobId"] != job.get("id")))
         return progress
 
-    def load(self, item_id, payload, cnc):
+    def load(self, item_id, payload, cnc, xy_offset=None):
         """Explicitly load only the next operation after tool/setup review."""
         with self.collection.lock, cnc.lock:
             item = self.collection.get(item_id)
@@ -62,6 +62,8 @@ class PcbProgress:
                 self.process_profiles.assert_snapshot(item["processProfile"])
             sequence = item.get("report", {}).get("sequence", [])
             progress = self.read(item_id, cnc.status())
+            if xy_offset is not None:
+                progress["xyOffset"] = list(xy_offset)
             index = len(progress["completed"])
             if payload.get("index") != index or index >= len(sequence):
                 raise ValueError("Nie można pominąć etapu zlecenia.")

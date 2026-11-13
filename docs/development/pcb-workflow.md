@@ -1,16 +1,17 @@
 # Guided PCB workflow
 
-The source-package panel offers **Wykonaj PCB**: isolation, drilling by exact
-source diameter, outline, or selected operations. Computer-aided manufacturing
-(CAM) runs in the existing offline sandbox. It never opens USB or starts motion.
+The default Project view uses independent **Ścieżki / Otwory / Obrys** stages.
+See [project preparation](pcb-projects.md) for the current operator flow,
+semantic THT import and API. Computer-aided manufacturing (CAM) runs in the
+existing offline sandbox. It never opens USB or starts motion.
 
 ## Setup and output
 
-Enter measured laminate thickness for every new job. The form never restores that
-field automatically. Select independent profiles for the requested tools.
-The immutable CAM request captures their revisions and tool/setup values.
-V-bit calibration is required only for isolation. The job form shows scope
-and thickness; tool selections expand when needed.
+Enter measured laminate thickness for every new stock setup. Refreshing a loaded
+project restores its existing setup, not an assumed thickness for new stock.
+The immutable CAM request captures independent tool profiles and setup values.
+V-bit calibration is required only for isolation. The project uses one measured
+thickness and shared X/Y; a profile selector appears only when needed.
 
 Configure feeds and tools once in Profiles, not on every board. Supply XY/Z feed
 for the actual tools. Preset dropdowns cover all profiles. Drilling has four
@@ -20,8 +21,9 @@ mechanical profiles use fixed S1000 control and operator-verified tool/backing.
 See [machining profiles](pcb-profiles.md)
 for parameter ownership, persistence and API details.
 
-The initial mechanical engine supports round Excellon holes, grouped into one
-program per diameter from 0.3 to 4 mm, and the rectangular source outline with a
+The mechanical engine supports semantic THT holes in new project packages and
+round Excellon holes in legacy CAM. One program is generated per diameter from
+0.3 to 4 mm. It supports the rectangular source outline with a
 0.5–3 mm end mill. Slots and unknown parser warnings fail, rather than disappear.
 The accepted Gerbonara 1.6.3 diagnostic about KiCad's explicit G90 command after
 the header only describes command placement; other diagnostics still fail.

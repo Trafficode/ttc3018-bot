@@ -65,21 +65,27 @@ def cam_request(handler):
             if path == "/api/cam/prepare":
                 # Heavy computation is available only with USB disconnected.
                 # This cannot affect the sender's timing or an active machine.
-                if status.get("connected") or status.get("job", {}).get(
-                    "state") in ("running", "paused", "pausing", "resuming",
-                                 "draining") or status.get("probing"):
-                    raise RuntimeError("Rozłącz CNC przed obliczaniem CAM.")
-                if payload.get("processProfileId") or (
-                    "processProfiles" in payload
-                ):
-                    recipe, workflow, clearance = (
-                        handler.server.process_profiles.resolve(
-                            payload, profile))
-                    payload = {**payload, "workflow": workflow,
-                               "clearanceMm": clearance}
-                    respond(202, collection.start(payload, profile, recipe))
-                else:
-                    respond(202, collection.start(payload, profile))
+                with collection.lock, cnc.lock:
+                    status = cnc.status()
+                    if status.get("connected") or status.get("job", {}).get(
+                        "state") in ("running", "paused", "pausing",
+                                     "resuming", "draining") or status.get(
+                                         "z_probe", {}).get("active"):
+                        raise RuntimeError("Rozłącz CNC przed obliczaniem CAM.")
+                    profile = status.get("calibration_profiles", {}).get(
+                        "selected", {})
+                    if payload.get("processProfileId") or (
+                        "processProfiles" in payload
+                    ):
+                        recipe, workflow, clearance = (
+                            handler.server.process_profiles.resolve(
+                                payload, profile))
+                        payload = {**payload, "workflow": workflow,
+                                   "clearanceMm": clearance}
+                        item = collection.start(payload, profile, recipe)
+                    else:
+                        item = collection.start(payload, profile)
+                respond(202, item)
             elif path == "/api/cam/cancel":
                 respond(200, collection.cancel(payload.get("id")))
             elif path == "/api/cam/load-stage":

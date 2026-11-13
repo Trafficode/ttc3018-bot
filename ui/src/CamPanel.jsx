@@ -15,7 +15,7 @@ export function CamPreparation({source, controller, api, onPrepared, locked,onOp
   </section>;
 }
 
-function ToolpathPreview({geometry, findings}) {
+export function ToolpathPreview({geometry, findings=[], probePoints=[]}) {
   const canvas = useRef(null);
   useEffect(()=>{
     if (!geometry || !canvas.current) return;
@@ -30,9 +30,10 @@ function ToolpathPreview({geometry, findings}) {
     context.strokeStyle='#087f8c';context.lineWidth=.8;
     geometry.paths.forEach(path=>{context.beginPath();trace(path);context.stroke();});
     (geometry.holes||[]).forEach(hole=>{const[x,y]=point(hole.point);context.beginPath();context.arc(x,y,hole.diameterMm*scale/2,0,Math.PI*2);context.stroke();});
+    probePoints.forEach(value=>{const[x,y]=point([value.x,value.y]);context.beginPath();context.arc(x,y,5,0,Math.PI*2);context.fillStyle='#fff';context.fill();context.strokeStyle='#28323c';context.stroke();});
     context.fillStyle='#bb2525';
     findings.forEach(item=>{const[x,y]=point([item.x,item.y]);context.beginPath();context.arc(x,y,4,0,Math.PI*2);context.fill();});
-  },[geometry,findings]);
+  },[geometry,findings,probePoints]);
   return <figure class="cam-preview"><canvas ref={canvas} width="720" height="520" role="img" aria-label="Podgląd od strony frezowania. Miedź brązowa, środek ścieżki frezu niebieski, problemy czerwone."/><figcaption>Miedź · ścieżka frezu · {findings.length ? 'problemy zaznaczone na czerwono' : 'widok od strony obróbki'}<small>G54: lewy dolny narożnik · +X w prawo · +Y w górę</small></figcaption></figure>;
 }
 

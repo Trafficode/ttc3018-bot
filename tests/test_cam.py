@@ -224,6 +224,8 @@ class CollectionTests(unittest.TestCase):
         server.cam = Mock()
         server.control_token = "operator-fixture"
         server.cnc = Mock()
+        server.cam.lock = threading.RLock()
+        server.cnc.lock = threading.RLock()
         server.cnc.status.return_value = {
             "connected": False, "job": {"state": "empty"},
             "calibration_profiles": {"selected": profile()}}

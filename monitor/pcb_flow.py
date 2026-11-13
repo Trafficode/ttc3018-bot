@@ -218,7 +218,24 @@ def checked_program(lines, name):
 
 
 def drill_groups(data, transform, directory):
-    """Read every PTH/NPTH round hole; slots fail rather than disappear."""
+    """Use semantic THT in new packages; legacy jobs keep source drill groups."""
+    from monitor.project_bundle import read_bundle
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        if "machining-project.json" in archive.namelist():
+            import json
+            manifest = json.loads(archive.read("machining-project.json"))
+            bundle = read_bundle(data, {"boardHash": manifest["sourceHash"],
+                                        "side": manifest["side"]}, True)
+            if bundle["unsupported"]:
+                raise ValueError("THT zawiera otwory podłużne; "
+                                 "wymagana inna obróbka.")
+            groups = {}
+            a, b, c, d, tx, ty = transform["matrix"]
+            for hole in bundle["holes"]:
+                x, y = hole["x"], hole["y"]
+                groups.setdefault(hole["diameterMm"], []).append(
+                    [a * x + b * y + tx, c * x + d * y + ty])
+            return groups
     from gerbonara import ExcellonFile
     from gerbonara.utils import MM
     groups = {}

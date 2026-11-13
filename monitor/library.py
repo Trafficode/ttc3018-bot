@@ -86,6 +86,11 @@ def validate_package(payload):
             record["commands"] = len(program["lines"])
         elif kind != "cad" or not name.lower().endswith(".zip"):
             raise ValueError("Dozwolone są programy NC i archiwum CAD ZIP.")
+        if kind == "cad":
+            from monitor.project_bundle import bundle_summary
+            machining = bundle_summary(data, project)
+            if machining["version"] == 1:
+                record["machining"] = machining
         records.append(record)
         contents[name] = data
     # Strip unknown fields. Stable ordering makes identical retries idempotent.

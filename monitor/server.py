@@ -27,6 +27,8 @@ from monitor.cam_http import cam_request
 from monitor.pcb_progress import PcbProgress
 from monitor.process_profiles import ProcessProfiles
 from monitor.process_http import process_request
+from monitor.pcb_projects import PcbProjects
+from monitor.pcb_projects_http import pcb_project_request
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_FRAME_BYTES = 2 * 1024 * 1024
@@ -238,6 +240,9 @@ class MonitorServer(ThreadingHTTPServer):
             Path.home() / ".local/share/bark-beetle/pcb-profiles.json")
         self.cnc.process_profiles = self.process_profiles
         self.pcb_progress = PcbProgress(self.cam, self.process_profiles)
+        self.pcb_projects = PcbProjects(
+            Path.home() / ".local/share/bark-beetle/projects", self.library,
+            self.cam, self.process_profiles, self.pcb_progress, self.cnc)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -267,7 +272,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         """Serve the dashboard, status, fresh snapshot or shared MJPEG stream."""
-        if process_request(self) or cam_request(self) or library_request(self):
+        if pcb_project_request(self) or process_request(self) or cam_request(self) or library_request(self):
             return
         path = urlsplit(self.path).path
         assets = {
@@ -297,6 +302,7 @@ class Handler(BaseHTTPRequestHandler):
                 status = self.server.state.status()
                 status["cnc"] = self.server.cnc.status()
                 status["control_token"] = self.server.control_token
+                status["cam_preparing"] = bool(self.server.cam.current)
                 body = json.dumps(status).encode()
                 self.respond(200, "application/json", body)
             elif path == "/camera.jpg":
@@ -316,7 +322,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         """Accept allowlisted manual actions with a same-origin CSRF token."""
-        if process_request(self) or cam_request(self) or library_request(self):
+        if pcb_project_request(self) or process_request(self) or cam_request(self) or library_request(self):
             return
         if urlsplit(self.path).path != "/api/cnc/action":
             self.respond(501, "text/plain", b"Unsupported request")
@@ -339,7 +345,13 @@ class Handler(BaseHTTPRequestHandler):
             ) else 1024
             if payload.get("action") != "job_load" and length > limit:
                 raise ValueError("Invalid request size")
-            result = self.server.cnc.action(payload.get("action"), payload)
+            if payload.get("action") == "connect":
+                with self.server.cam.lock, self.server.cnc.lock:
+                    if self.server.cam.current:
+                        raise ValueError("Poczekaj na przygotowanie projektu PCB.")
+                    result = self.server.cnc.action("connect", payload)
+            else:
+                result = self.server.cnc.action(payload.get("action"), payload)
             body = json.dumps({"ok": True, **(result or {})}).encode()
             self.respond(200, "application/json", body)
         except (ValueError, TypeError) as error:
