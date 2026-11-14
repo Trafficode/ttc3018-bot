@@ -7,6 +7,7 @@
 
 import math
 import copy
+import time
 from pathlib import Path
 import tempfile
 import unittest
@@ -67,6 +68,78 @@ class ProfileTestTests(unittest.TestCase):
                          f"<Idle|MPos:{x+10},{y+20},{z-.002}|Pn:P>\n")
             self.receive(f"ok\n<Idle|MPos:{x+10},{y+20},6>\n")
         return scan
+
+    def complete_cycle_scan(self):
+        result = self.action("profile_test_start", self.payload(fixed_probe=True))
+        scan = self.cnc.calibration.scan
+        self.assertEqual(self.cnc.calibration.origin, [2, 3])
+        self.assertIn("cycle_lease", result)
+        self.receive("[PRB:12,23,5.2:1]\nok\n<Idle|MPos:12,23,5.198|Pn:P>\n")
+        self.receive("ok\nok\n<Idle|MPos:12,23,6.2|WCO:10,20,5.2>\n")
+        for point in scan.points:
+            x, y = point["x"], point["y"]
+            self.receive(f"ok\n<Idle|MPos:{x+10},{y+20},6.2>\n")
+            z = 5.2 + .001*(x-2)+.002*(y-3)
+            self.receive(f"[PRB:{x+10},{y+20},{z}:1]\nok\n"
+                         f"<Idle|MPos:{x+10},{y+20},{z-.002}|Pn:P>\n")
+            self.receive(f"ok\n<Idle|MPos:{x+10},{y+20},6.2>\n")
+        self.assertTrue(scan.valid)
+        return result
+
+    def advance_cycle(self):
+        with patch.object(self.cnc, "_status"), patch.object(self.cnc, "_line",
+            side_effect=lambda command: ["[G54:10,20,5.2]", "[G92:0,0,0]", "[TLO:0]"] if command == "$#" else MODAL):
+            self.cnc.calibration.tick_cycle(self.cnc)
+
+    def test_one_confirmation_references_z_maps_and_starts_exactly_one_cut(self):
+        result = self.complete_cycle_scan()
+        calibration = self.cnc.calibration
+        self.assertEqual(self.cnc.offset, [10,20,5.2])
+        self.assertEqual(sum(b"G10L20P1Z" in command for command in self.cnc.port.writes), 1)
+        self.assertFalse(any(b"G10L20P1X" in command or b"M3" in command for command in self.cnc.port.writes))
+        self.advance_cycle()
+        self.assertEqual(calibration.cycle["phase"], "cutting")
+        self.assertTrue(calibration.runner.active())
+        self.assertTrue(calibration.runner.program["compensated"])
+        job = calibration.runner.job_id
+        self.advance_cycle()
+        self.assertEqual(calibration.runner.job_id, job)
+        self.cnc.action("profile_test_heartbeat", {"lease": result["cycle_lease"]})
+        with self.assertRaises(ValueError):
+            self.cnc.action("profile_test_heartbeat", {"lease": "observer"})
+        calibration.runner.state = "completed"
+        self.advance_cycle()
+        self.assertFalse(calibration.cycle["active"])
+        self.assertEqual(calibration.cycle["phase"], "completed")
+
+    def test_cycle_expired_owner_never_starts_cut(self):
+        self.complete_cycle_scan()
+        self.cnc.calibration.cycle_heartbeat_at = time.monotonic()-9
+        self.advance_cycle()
+        self.assertFalse(self.cnc.calibration.runner.active())
+        self.assertEqual(self.cnc.calibration.cycle["phase"], "failed")
+
+    def test_cycle_stop_or_failed_probe_never_starts_cut(self):
+        self.action("profile_test_start", self.payload(fixed_probe=True))
+        self.cnc.action("probe_stop", {})
+        self.cnc.calibration.scan.state = "completed"
+        self.cnc.calibration.scan.valid = True
+        self.advance_cycle()
+        self.assertFalse(self.cnc.calibration.runner.active())
+        self.assertEqual(self.cnc.calibration.cycle["phase"], "stopped")
+
+    def test_cycle_requires_confirmation_and_fixed_probe(self):
+        for payload in (self.payload(), self.payload(fixed_probe=True, confirmed=False)):
+            with self.assertRaises(ValueError):
+                self.action("profile_test_start", payload)
+        self.assertFalse(self.cnc.last_probe.active())
+
+    def test_cycle_profile_drift_blocks_transition(self):
+        self.complete_cycle_scan()
+        self.cnc.calibration.profile_identity["fingerprint"] = "changed"
+        self.advance_cycle()
+        self.assertFalse(self.cnc.calibration.runner.active())
+        self.assertEqual(self.cnc.calibration.cycle["phase"], "failed")
 
     def test_nominal_copper_and_actual_sweep_fit_the_probe_area(self):
         config = configuration(self.store)

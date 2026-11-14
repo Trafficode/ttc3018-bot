@@ -7,6 +7,7 @@
 
 import unittest
 import time
+from unittest.mock import patch
 
 from monitor.cnc import manual_command, parse_status
 from controller_fixture import Controller
@@ -34,6 +35,41 @@ class FakePort:
 
 class CncTests(unittest.TestCase):
     """Verify bounded commands and conservative device failure handling."""
+
+    def test_project_datum_blocks_probe_and_start_before_any_serial_write(self):
+        cnc = Controller()
+        cnc.port = FakePort([])
+        cnc.jobs.program = {"pcb_flow": {"projectSetupId": "setup", "datumId": "old"}}
+        for action in ("probe_start", "surface_start", "job_start"):
+            with self.assertRaisesRegex(ValueError, "zero X/Y"):
+                cnc.action(action, {})
+        self.assertEqual(cnc.port.writes, [])
+
+    def test_project_datum_survives_z_only_but_not_xy_or_disconnect(self):
+        cnc = Controller()
+        datum = {"id": "current", "setupId": "setup", "offset": [12, 18]}
+        cnc.project_datum = datum.copy()
+        cnc._accept_status("<Idle|MPos:12,18,6|WCO:12,18,5>")
+        self.assertEqual(cnc.project_datum, datum)
+        cnc._accept_status("<Idle|MPos:12,18,6|WCO:12,18,5.5>")
+        self.assertEqual(cnc.project_datum, datum)
+        cnc._accept_status("<Idle|MPos:12,18,6|WCO:12.01,18,5.5>")
+        self.assertIsNone(cnc.project_datum)
+        cnc.project_datum = datum.copy()
+        cnc._close("fixture disconnect")
+        self.assertIsNone(cnc.project_datum)
+
+    def test_project_live_offset_recheck_rejects_changed_xy(self):
+        cnc = Controller()
+        cnc.port = FakePort([])
+        cnc.project_datum = {"id": "current", "setupId": "setup", "offset": [12, 18]}
+        cnc.jobs.program = {"pcb_flow": {"projectSetupId": "setup", "datumId": "current"}}
+        with patch.object(cnc, "_line", return_value=["[G54:12,18,5]", "[G92:0,0,0]", "[TLO:0]"]):
+            cnc.check_project_datum()
+        with patch.object(cnc, "_line", return_value=["[G54:13,18,5]", "[G92:0,0,0]", "[TLO:0]"]):
+            with self.assertRaisesRegex(ValueError, "zmieniło"):
+                cnc.check_project_datum()
+        self.assertIsNone(cnc.project_datum)
 
     def test_stale_reading_keeps_connection_but_hides_position(self):
         cnc = Controller()

@@ -4,7 +4,7 @@ import {FieldHelp} from './FieldHelp.jsx';
 
 export function ParameterField({id, label, value, onChange, options, min, max,
   step = 1, help, disabled = false, scale = 1,
-  format = v => String(v * scale).replace('.', ',')}) {
+  format = v => Number((v * scale).toFixed(6)).toLocaleString('pl-PL', {maximumFractionDigits:6})}) {
   const [custom, setCustom] = useState(false);
   const input = useRef();
   const values = [...new Set([...options,

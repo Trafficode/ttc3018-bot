@@ -82,6 +82,8 @@ export function createSurfacePlan(bounds, settings) {
       return {error: `Plan musi obejmować cały zakres ${axis} z pliku. Sprawdź mocowania lub zmień program.`};
     }
     area[axis] = [low, high];
+    const count = axis === 'X' ? columns : rows;
+    if ((high-low)/(count-1)<.01) return {error:'Rozstaw sondowania musi wynosić co najmniej 0,01 mm.'};
   }
   const points = [];
   for (let row = 0; row < rows; row++) {

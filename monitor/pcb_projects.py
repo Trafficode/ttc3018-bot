@@ -8,6 +8,7 @@
 import copy
 from datetime import datetime, timezone
 import json
+import math
 from pathlib import Path
 import secrets
 import threading
@@ -58,6 +59,9 @@ class PcbProjects:
         """Progress readback shares the lock used by the legacy flow routes."""
         result = copy.deepcopy(run)
         status = self.cnc.status()
+        datum = status.get("project_datum") or {}
+        result["xyReady"] = bool(status.get("connected") and status.get("fresh")
+                                 and datum.get("setupId") == run["id"])
         stages = {}
         for kind, identity in run["stages"].items():
             try:
@@ -92,6 +96,8 @@ class PcbProjects:
                         loaded.get("jobId") == status.get("job", {}).get("id")
                         and loaded.get("index") == index
                         and not progress.get("requiresReload"))
+                    stage["loaded"] = stage["loaded"] and result["xyReady"] and (
+                        status.get("job", {}).get("pcb_flow", {}).get("datumId") == datum.get("id"))
                     stage["zReady"] = stage["loaded"] and status.get(
                         "connected") and status.get("fresh") and (
                         self.cnc.probe.completed_job_id == self.cnc.jobs.job_id
@@ -171,6 +177,46 @@ class PcbProjects:
             write_json(self.filename(run["id"]), run)
             return self.state(run)
 
+    def set_xy(self, payload):
+        """Only an explicit operator confirmation may bind or change XY."""
+        with self.lock, self.cam.lock, self.cnc.lock:
+            run = self.read(payload.get("setupId"))
+            if payload.get("confirmed") is not True or payload.get("mode") not in ("set", "retain"):
+                raise ValueError("Potwierdź ustawienie X/Y i mocowanie materiału.")
+            status = self.cnc.status()
+            if not status.get("connected") or not status.get("fresh") or status.get("state") != "Idle" or (
+                status.get("job", {}).get("state") in ACTIVE or status.get("z_probe", {}).get("active")
+                or status.get("calibration", {}).get("job", {}).get("state") in ACTIVE
+            ):
+                raise ValueError("Ustawienie X/Y wymaga bezczynnej frezarki.")
+            self.cnc._status()
+            status = self.cnc.status()
+            if not status.get("fresh") or status.get("state") != "Idle":
+                raise ValueError("Ustawienie X/Y wymaga aktualnego stanu Idle.")
+            expected, current = payload.get("position"), status.get("position")
+            if not isinstance(expected, list) or len(expected) != 3 or not current or any(
+                isinstance(a, bool) or not isinstance(a, (int, float)) or not math.isfinite(a)
+                or abs(a-b) > .002 for a, b in zip(expected, current)
+            ):
+                raise ValueError("Pozycja zmieniła się. Sprawdź punkt odniesienia ponownie.")
+            modal = self.cnc._line("$G")
+            tokens = next((line[4:-1].split() for line in modal if line.startswith("[GC:") and line.endswith("]")), [])
+            if "G54" not in tokens or "M5" not in tokens:
+                raise ValueError("Ustawienie X/Y wymaga G54 i wyłączonego wrzeciona.")
+            self._state(run)
+            # Clear previous evidence before touching the controller; failures
+            # must never leave an earlier confirmation usable.
+            self.cnc.project_datum = None
+            self.cnc.surface.invalidate("Potwierdzono nowe ustawienie X/Y.")
+            self.cnc.probe.completed_job_id = None
+            if payload["mode"] == "set":
+                self.cnc.action("zero_xy", {})
+            offset = live_offset(self.cnc._line("$#"))[:2]
+            run["xyOffset"] = offset
+            write_json(self.filename(run["id"]), run)
+            self.cnc.project_datum = {"id": secrets.token_hex(16), "setupId": run["id"], "offset": offset}
+            return self.state(run)
+
     def load(self, payload):
         """Explicit tool preparation binds all stage jobs to the same X/Y."""
         with self.lock, self.cam.lock, self.cnc.lock:
@@ -197,30 +243,34 @@ class PcbProjects:
                 raise ValueError("Potwierdź mocowanie PCB przy cięciu "
                                  "na wylot.")
             self.profiles.assert_snapshot(item["processProfile"])
-            if kind == "isolation":
-                self.cnc.action("profile_select", {
-                    "profile_id": item["profile"]["id"]})
+            datum = status.get("project_datum") or {}
+            if datum.get("setupId") != run["id"]:
+                raise ValueError("Ustaw zero X/Y w przygotowaniu projektu.")
             offset = live_offset(self.cnc._line("$#"))[:2]
-            expected = run["xyOffset"]
+            expected = datum["offset"]
             if expected is not None and any(abs(a-b) > .002 for a, b in zip(
                 offset, expected
             )):
                 raise ValueError("Zero X/Y projektu zmieniło się. "
-                                 "Przygotuj nowe ustawienie PCB.")
+                                 "Potwierdź ustawienie PCB ponownie.")
             progress = self.progress.read(item["id"], status)
             loaded = progress.get("loaded") or {}
             if loaded.get("jobId") == status.get("job", {}).get("id") and (
                 loaded.get("index") == len(progress["completed"]) and
+                status.get("job", {}).get("pcb_flow", {}).get("datumId") == datum["id"] and
                 not progress.get("requiresReload") and
                 status.get("job", {}).get("state") not in (
                     "failed", "stopped", "completed")
             ):
                 return self.state(run)
+            if kind == "isolation":
+                self.cnc.action("profile_select", {
+                    "profile_id": item["profile"]["id"]})
             self.progress.load(item["id"], {"index": len(progress["completed"]),
                 "confirmedTool": True, "confirmedReference": True}, self.cnc,
                 xy_offset=offset)
             self.cnc.jobs.program["pcb_flow"].update(
-                projectSetupId=run["id"], packageId=run["packageId"])
+                projectSetupId=run["id"], packageId=run["packageId"], datumId=datum["id"])
             run["xyOffset"] = offset
             write_json(self.filename(run["id"]), run)
             return self.state(run)

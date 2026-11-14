@@ -9,17 +9,36 @@ Each stage is independent. A missing profile, absent THT holes or failed isolati
 does not block preparing another stage. Profiles are created in Profiles before
 starting the job; the Project view only selects a profile when several exist.
 Preparation runs automatically with CNC disconnected and never opens USB.
+Measured thickness remains editable with a freshly reported idle CNC connection.
+Editing is locked during jobs/probes, preparation, pending commands or unknown
+controller state. Entering a changed thickness clears the draft setup; the panel
+asks the operator to disconnect before preparing replacement stages. It never
+disconnects the controller or changes a loaded machine program automatically.
 
 The three visible phases are preparation, Z measurement and machining. Mount the
 displayed tool, connect at the station, check the probe contact and request Z.
-The existing confirmation dialog remains mandatory. Isolation measures a 3×3
-surface map, drilling uses a point, outline measures the eight perimeter points.
+The existing confirmation dialog remains mandatory. Isolation offers 3–11 points
+per axis (default 5×5, including rectangular grids), drilling uses a point, and
+outline measures the eight perimeter points on intact copper outside the board.
+The preview and confirmation use the selected grid. Changing its dimensions
+requires a new matching map before Start; spacing must be at least 0.01 mm.
 Start appears separately after measurement; nothing starts automatically.
 Each drilling diameter requires its own tool change and fresh Z measurement.
 
 One setup binds the source package, measured thickness and live G54 X/Y offset.
-All stages must retain that X/Y datum. Changed X/Y blocks loading another tool;
-prepare a new setup after repositioning stock. A refreshed page restores the
+All stages must retain that X/Y datum. After offline preparation, connect and
+position with Move, then explicitly confirm X/Y in the common material section.
+Set XY writes only G10 L20 P1 X0 Y0; retain confirms the existing datum without
+changing coordinates. Both require fresh Idle, G54, M5, unchanged position and
+operator confirmation. Both invalidate Z and force reloading a prepared tool.
+The datum is the lower-left finished PCB outline corner viewed from the machined
+side (already mirrored for B.Cu), not the corner of a larger stock blank.
+A live in-memory datum identity gates project loading, probing and Start.
+Disconnect/restart/manual XY changes or observed XY-offset drift invalidate it;
+Z-only reference changes preserve XY. Changing thickness never moves or zeros
+axes; recalculate offline, then confirm the material setup again.
+Completed operations remain historical evidence for that setup; use a new setup
+for another stock blank rather than reusing completion from the previous board. A refreshed page restores the
 loaded project and stage. A service restart invalidates loaded/probe evidence.
 Completion comes only from the exact sender job, never from a checkbox.
 
@@ -30,6 +49,8 @@ Operator-only routes require `X-PiloMill-Token`; POST requires same-origin JSON:
 - `GET /api/pcb-projects?packageId=<id>` returns recent setups in `runs`.
 - `POST /api/pcb-projects/prepare`: `packageId`, optional `setupId`, `stage`,
   `thicknessMm`, `profileId`, `fingerprint`, optional `confirmedThroughCut`.
+- `POST /api/pcb-projects/xy`: `setupId`, `mode: set|retain`, `position: [x,y,z]`,
+  `confirmed: true`. This route must only be called after operator confirmation.
 - `POST /api/pcb-projects/load`: `setupId`, `stage`, `confirmedTool: true`, and
   fresh `confirmedThroughCut: true` for full-through outline profiles.
 
@@ -51,7 +72,11 @@ Path traversal, repeated ZIP members, oversized files, invalid coordinates and
 changed hashes are rejected. Legacy archives require re-export for THT drilling.
 
 Single-file NC import remains a separate entry from the project list. Existing
-manual control and saved profiles remain available.
+manual control and saved profiles remain available. Manual Zero and contact-test
+settings live in the advanced Service disclosure (also reachable from NC import).
+Project, Move and Profiles are the main navigation. Confirmed material setup
+collapses to a summary. Desktop uses bounded forms, aligned parameter columns
+and a preview next to the operation controls; mobile stacks the same controls.
 
 Validation covers offline geometry/CAM, sender doubles and intercepted browser
 actions. It does not replace an operator's physical tool, fixture and probe check.

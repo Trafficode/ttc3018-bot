@@ -23,7 +23,7 @@ function TestPreview({plan, map, origin}) {
       }))}
       <path d={`M${x(0)} ${bottom+20}H${x(plan.width)}M28 ${y(0)}V${y(plan.height)}`} stroke="#53616d" fill="none"/>
       <text x={x(plan.width/2)} y={bottom+37} text-anchor="middle">X → {mm(plan.width)} mm</text><text x="14" y={35+plan.height*scale/2} text-anchor="middle" transform={`rotate(-90 14 ${35+plan.height*scale/2})`}>Y → {mm(plan.height)} mm</text>
-    </svg><small>Margines 1 mm z każdej strony od całego obszaru frezowania. Siatka Z obejmuje ten sam prostokąt. Wysokości względem aktualnego Z=0.</small>
+    </svg><small>Margines 1 mm z każdej strony od całego obszaru frezowania. Siatka Z obejmuje ten sam prostokąt. Wysokości względem automatycznie ustalonego Z=0.</small>
   </figure>;
 }
 
@@ -32,18 +32,16 @@ export function ProfilePanel({controller, cnc, ask}) {
   const service=cnc.calibration || {};
   const plan=cnc.profile_test_plan;
   const matches=service.mode==='profile_test' && service.profile_identity?.fingerprint===selected.fingerprint;
-  const [newSession,setNewSession]=useState(!matches || !service.base);
-  const [clip,setClip]=useState(false);
+
   const [repeatChecked,setRepeatChecked]=useState(false);
   const [tab,setTab]=useState('settings');
   function tabKey(event){if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const next=event.key==='Home'?'settings':event.key==='End'?'test':tab==='settings'?'test':'settings';setTab(next);document.getElementById(next==='settings'?'profile-settings-tab':'profile-test-tab')?.focus();}
-  useEffect(()=>{setClip(false);setNewSession(!matches || !service.base);},[selected.fingerprint]);
   useEffect(()=>{setRepeatChecked(false);},[service.job?.state,service.repeat?.id,selected.fingerprint]);
   const map=matches ? service.map : null;
-  const ready=map?.valid && !newSession;
   const busy=controller.active.value || !!controller.pending.value;
-  const canProbe=controller.manualReady.value && plan && !plan.error && cnc.probe_tested && cnc.probe_triggered===false && cnc.position?.[2]>=0 && cnc.position?.[2]<=3;
-  const origin=newSession ? cnc.position : service.origin;
+  const canProbe=controller.manualReady.value && plan && !plan.error && cnc.probe_tested && cnc.probe_triggered===false && Array.isArray(cnc.position);
+  const cycle=matches ? service.cycle : null;
+  const origin=cycle?.active||service.repeat?.valid ? service.origin : cnc.position;
   const params={profile_id:selected.id,profile_fingerprint:selected.fingerprint,session:service.session || null,position:cnc.position ? [...cnc.position] : null};
   const repeat=service.repeat;
   const inRepeatArea=cnc.position && map?.area && cnc.position[0]>=map.area.X[0]-.002 && cnc.position[0]<=map.area.X[1]+.002 && cnc.position[1]>=map.area.Y[0]-.002 && cnc.position[1]<=map.area.Y[1]+.002 && cnc.position[2]>=0 && cnc.position[2]<=3;
@@ -55,18 +53,20 @@ export function ProfilePanel({controller, cnc, ask}) {
     {tab==='settings'?<ProfileSettings controller={controller} cnc={cnc} ask={ask}/>:<>
     {plan?.settings&&<p class="profile-test-conditions">Z −{plan.settings.depth} mm · frez {plan.settings.tip} / {plan.settings.angle}° · XY {plan.settings.feed} · wejście Z {plan.settings.plunge} mm/min · S{plan.settings.power}</p>}
     {!plan || plan.error ? <p class="field-error">{plan?.error || 'Oczekiwanie na plan testu.'}</p> : <>
-      <TestPreview plan={plan} map={matches && (ready || map?.active || activeStates.includes(service.job?.state) || repeat?.valid) ? map : null} origin={repeat?.valid && !newSession ? service.origin : origin}/>
+      <TestPreview plan={plan} map={matches && (map?.active || cycle || repeat?.valid) ? map : null} origin={origin}/>
       <p class="service-hint">Paski: 10 mm × 0,3 / 0,5 / 1 mm. Ośmiokąty: przekątne 1 i 2 mm między przeciwległymi wierzchołkami. Rowek: {mm(plan.diameter)} mm. Obszar: {mm(plan.width)} × {mm(plan.height)} mm.</p>
-      <label class="service-check"><input id="profile-test-new" type="checkbox" checked={newSession} disabled={busy} onChange={e=>{setNewSession(e.currentTarget.checked);setClip(false);}}/>Nowy test od aktualnego X/Y</label>
-      <p class="service-hint">Z=0 pozostaje bez zmian. Sondowanie 3×3: F20, prześwit 1 mm, maksymalny zjazd 1,4 mm. Cały obszar musi leżeć nad świeżą miedzią.</p>
-      <p class="service-hint">Wejście w miedź: szybki pionowy zjazd do 0,5 mm nad lokalną powierzchnią z mapy Z, następnie prędkość wejścia zapisana w profilu. Przejazdy XY pozostają na pełnym prześwicie.</p>
-      <div class="service-actions"><button id="profile-test-probe" class="primary" type="button" disabled={!canProbe} onClick={()=>{setClip(false);ask('profile_test_prepare',{...params,new_session:newSession,area_width:plan.width,area_height:plan.height,...plan.settings});setNewSession(false);}}>1. Zmierz 9 punktów Z</button>
-      <label class="service-check"><input id="profile-test-clip" type="checkbox" disabled={busy || !ready} checked={ready && clip} onChange={e=>setClip(e.currentTarget.checked)}/>Krokodylek zdjęty z frezu</label>
-      <button id="profile-test-cut" class="primary" type="button" disabled={!controller.manualReady.value || !ready || !clip || cnc.probe_triggered!==false} onClick={()=>ask('profile_test_cut',{...params,map_id:map.id,clip_removed:true,...plan.settings})}>2. Frezuj test profilu</button>
-      {controller.active.value && <button class="stop" type="button" onClick={()=>controller.send({action:controller.probing.value?'probe_stop':'job_stop'},true)}>Stop</button>}</div>
-      {matches && activeStates.includes(service.job?.state) && <progress max={service.job.total || 1} value={service.job.acknowledged || 0} aria-label="Postęp testu profilu"/>}
+      <p class="service-hint">Bieżące X/Y to lokalne 0,0 testu — lewy dolny narożnik pola. Ustaw frez blisko nad świeżą miedzią; pierwszy zjazd szuka styku maksymalnie 1,4 mm. Zero X/Y projektu pozostaje zachowane.</p>
+      <p class="service-hint">Jeden cykl: zero Z → mapa 3 × 3 → frezowanie wzoru. Parametry cięcia pochodzą z wybranego profilu. Sonda pozostaje podłączona do obudowy wrzeciona; przewód musi być poza obszarem ruchu.</p>
+      {cycle&&<p role="status">{cycle.phase==='probing'?`Pomiar Z · ${map?.samples?.length||0} / 9 punktów`:cycle.phase==='cutting'?'Frezowanie wzoru testowego':cycle.phase==='completed'?'Test profilu zakończony':cycle.phase==='failed'?'Test przerwany błędem':cycle.phase==='stopped'?'Test zatrzymany':''}</p>}
+      {cycle?.error&&<p role="alert">{cycle.error}</p>}
+      {!busy&&(!cnc.connected?<p class="service-hint" role="status">Połącz CNC przy stanowisku, aby uruchomić test.</p>:!cnc.probe_tested?<p class="service-hint" role="status">Sprawdź styk sondy z miedzią i odsuń frez przed uruchomieniem testu.</p>:cnc.probe_triggered!==false?<p class="service-hint" role="status">Sonda musi być rozwarta przed rozpoczęciem pomiaru.</p>:null)}
+      <div class="service-actions">
+      <button id="profile-test-start" class="primary" type="button" disabled={!canProbe||busy} onClick={()=>ask('profile_test_start',{...params,fixed_probe:true,...plan.settings})}>Uruchom test profilu</button>
+      {busy&&<button class="stop" type="button" onClick={()=>controller.send({action:controller.probing.value?'probe_stop':'job_stop'},true)}>Stop testu</button>}
+      </div>
+      {matches&&activeStates.includes(service.job?.state)&&<progress max={service.job.total||1} value={service.job.acknowledged||0} aria-label="Postęp frezowania wzoru"/>}
       {matches && repeat?.passes>0 && <section class="profile-finish" aria-labelledby="profile-finish-title"><h3 id="profile-finish-title">Przejazd wykańczający</h3><p>Wykonane przejazdy: {repeat.passes}. Oczyść PCB przy zatrzymanym wrzecionie. Powtórka używa tego samego toru i mapy Z, bez dodatkowego zagłębiania.</p>
-        {!repeat.valid ? <p class="field-error" role="status">{repeat.reason || 'Przygotowanie zmieniło się. Wykonaj nowy pomiar i test.'}</p> : <><label class="service-check"><input id="profile-finish-setup" type="checkbox" checked={repeatChecked} disabled={busy} onChange={e=>setRepeatChecked(e.currentTarget.checked)}/>Laminat, mocowanie, frez i zero bez zmian; przewód sondy zdjęty</label>{!inRepeatArea && <p class="service-hint">Ustaw frez nad zapisanym obszarem testu, na Z od 0 do 3 mm.</p>}<button id="profile-test-finish" type="button" class="primary" disabled={!controller.manualReady.value || !repeat.available || !inRepeatArea || !repeatChecked || cnc.probe_triggered!==false} onClick={()=>ask('profile_test_finish',{...params,repeat_id:repeat.id,setup_unchanged:true,clip_removed:true,depth:repeat.depth})}>Powtórz przejazd wykańczający</button></>}
+        {!repeat.valid ? <p class="field-error" role="status">{repeat.reason || 'Przygotowanie zmieniło się. Wykonaj nowy pomiar i test.'}</p> : <><label class="service-check"><input id="profile-finish-setup" type="checkbox" checked={repeatChecked} disabled={busy} onChange={e=>setRepeatChecked(e.currentTarget.checked)}/>Laminat, mocowanie, frez i zero bez zmian; przewód poza obszarem ruchu</label>{!inRepeatArea && <p class="service-hint">Ustaw frez nad zapisanym obszarem testu, na Z od 0 do 3 mm.</p>}<button id="profile-test-finish" type="button" class="primary" disabled={!controller.manualReady.value || !repeat.available || !inRepeatArea || !repeatChecked || cnc.probe_triggered!==false} onClick={()=>ask('profile_test_finish',{...params,repeat_id:repeat.id,setup_unchanged:true,fixed_probe:true,depth:repeat.depth})}>Powtórz przejazd wykańczający</button></>}
       </section>}
     </>}
     </>}

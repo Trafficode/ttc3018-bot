@@ -33,7 +33,7 @@ def pcb_project_request(handler):
             respond(200, {"runs": store.list(package)})
             return True
         if handler.command != "POST" or url.path not in (
-            "/api/pcb-projects/prepare", "/api/pcb-projects/load"
+            "/api/pcb-projects/prepare", "/api/pcb-projects/load", "/api/pcb-projects/xy"
         ):
             respond(404, {"error": "Nieznana operacja projektu PCB."})
             return True
@@ -50,6 +50,8 @@ def pcb_project_request(handler):
             raise ValueError("Wymagany obiekt JSON.")
         if url.path.endswith("/prepare"):
             respond(202, store.prepare(payload))
+        elif url.path.endswith("/xy"):
+            respond(200, store.set_xy(payload))
         else:
             respond(200, store.load(payload))
     except (ValueError, TypeError, KeyError) as error:

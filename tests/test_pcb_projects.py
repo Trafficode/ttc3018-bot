@@ -19,7 +19,7 @@ from urllib.request import Request, urlopen
 from monitor.cam import implementation_hashes
 from monitor.library import PackageLibrary
 from monitor.pcb_progress import PcbProgress
-from monitor.pcb_projects import PcbProjects
+from monitor.pcb_projects import PcbProjects, ACTIVE
 from monitor.process_profiles import ProcessProfiles
 from monitor.server import Handler
 from project_fixture import project_archive
@@ -34,13 +34,17 @@ class FakeSender:
     def __init__(self):
         self.lock = threading.RLock()
         self.connected = False
+        self.project_datum = None
+        self.position = [12, 18, 1]
+        self.machine_state = 'Idle'
+        self.probing = False
         self.offset = [0, 0, 0]
         self.actions = []
         self.loads = 0
         self.jobs = SimpleNamespace(job_id=None, program={})
         self.job_state = "empty"
         self.probe = SimpleNamespace(completed_job_id=None)
-        self.surface = SimpleNamespace(valid=False, job_id=None)
+        self.surface = SimpleNamespace(valid=False, job_id=None, invalidate=lambda reason: setattr(self.surface, 'valid', False))
         self.active_profile = {"id": "default"}
         self.calibration = SimpleNamespace(profiles=SimpleNamespace(
             status=lambda: {"profiles": [profile()]},
@@ -48,16 +52,27 @@ class FakeSender:
 
     def status(self):
         return {"connected": self.connected, "fresh": self.connected,
-                "state": "Idle", "z_probe": {"active": False},
+                "state": self.machine_state, "z_probe": {"active": self.probing},
+                "position": self.position, "project_datum": self.project_datum,
                 "job": {"id": self.jobs.job_id, "state": self.job_state,
                         "pcb_flow": self.jobs.program.get("pcb_flow")}}
 
+    def _status(self):
+        pass
+
     def _line(self, command):
+        if command == '$G':
+            return ['[GC:G0 G54 G21 G90 M5]']
         assert command == "$#", command
         x, y, z = self.offset
         return [f"[G54:{x},{y},{z}]", "[G92:0,0,0]", "[TLO:0]"]
 
     def action(self, action, payload):
+        if action == "zero_xy":
+            self.actions.append(action)
+            self.offset[:2] = [a+b for a, b in zip(self.offset, self.position)][:2]
+            self.position[:2] = [0, 0]
+            return
         assert action == "profile_select", action
         self.actions.append(action)
         self.calibration.profiles.active = {"id": payload["profile_id"]}
@@ -137,6 +152,8 @@ class PcbProjectTests(unittest.TestCase):
 
     def load(self, kind, run):
         self.cnc.connected = True
+        if self.cnc.project_datum is None:
+            self.store.set_xy({"setupId": run["id"], "mode": "retain", "confirmed": True, "position": self.cnc.position[:]})
         return self.store.load({"setupId": run["id"], "stage": kind,
                                 "confirmedTool": True})
 
@@ -211,6 +228,59 @@ class PcbProjectTests(unittest.TestCase):
         self.assertTrue(state["stageStates"]["drilling"]["stale"])
         with self.assertRaisesRegex(ValueError, "oblicz PCB ponownie"):
             self.load("drilling", run)
+
+    def test_xy_required_before_first_load_and_after_connection_loss(self):
+        run = self.prepare("drilling")
+        self.cnc.connected = True
+        payload = {"setupId": run["id"], "stage": "drilling", "confirmedTool": True}
+        with self.assertRaisesRegex(ValueError, "zero X/Y"):
+            self.store.load(payload)
+        self.load("drilling", run)
+        self.cnc.project_datum = None
+        self.assertFalse(self.store.state(run)["xyReady"])
+        with self.assertRaisesRegex(ValueError, "zero X/Y"):
+            self.store.load(payload)
+
+    def test_set_xy_is_explicit_and_invalidates_z_and_loaded_job(self):
+        run = self.load("drilling", self.prepare("drilling"))
+        self.cnc.probe.completed_job_id = self.cnc.jobs.job_id
+        payload = {"setupId": run["id"], "mode": "set", "confirmed": True, "position": self.cnc.position[:]}
+        for change in ({"confirmed": False}, {"position": [0, 0, 0]}, {"position": [float("nan"), 0, 0]}, {"mode": "other"}):
+            with self.assertRaises(ValueError):
+                self.store.set_xy({**payload, **change})
+        self.assertNotIn("zero_xy", self.cnc.actions)
+        state = self.store.set_xy(payload)
+        self.assertEqual(self.cnc.actions.count("zero_xy"), 1)
+        self.assertEqual(state["xyOffset"], [12, 18])
+        self.assertTrue(state["xyReady"])
+        self.assertFalse(state["stageStates"]["drilling"]["loaded"])
+        self.assertFalse(state["stageStates"]["drilling"]["zReady"])
+        self.load("drilling", state)
+        self.assertEqual(self.cnc.loads, 2)
+
+    def test_xy_rejects_running_paused_probing_and_disconnected(self):
+        run = self.prepare("drilling")
+        payload = {"setupId": run["id"], "mode": "set", "confirmed": True, "position": self.cnc.position[:]}
+        with self.assertRaises(ValueError):
+            self.store.set_xy(payload)
+        self.cnc.connected = True
+        for state in ACTIVE:
+            self.cnc.job_state = state
+            with self.assertRaises(ValueError):
+                self.store.set_xy(payload)
+        self.cnc.job_state = "empty"
+        self.cnc.probing = True
+        with self.assertRaises(ValueError):
+            self.store.set_xy(payload)
+        self.assertEqual(self.cnc.actions, [])
+
+    def test_other_project_does_not_inherit_confirmation(self):
+        first = self.prepare("drilling")
+        second = self.prepare("drilling")
+        self.load("drilling", first)
+        with self.assertRaisesRegex(ValueError, "zero X/Y"):
+            self.store.load({"setupId": second["id"], "stage": "drilling", "confirmedTool": True})
+        self.assertFalse(self.store.state(second)["xyReady"])
 
     def test_operator_api_rejects_ingestion_token_and_foreign_origin(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)

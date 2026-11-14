@@ -3,12 +3,13 @@
 # 2026-10-24
 # - Five-point service coupons using existing Z zero and guarded job runners.
 # ---------------------------------------------------------------------------
-"""Offline geometry, local probing and explicit cutting; never auto-start."""
+"""Local probing, explicit cuts and one operator-authorized profile cycle."""
 
 import json
 import copy
 import math
 import secrets
+import time
 from pathlib import Path
 
 from monitor.compensation import compensate_program, live_offset
@@ -168,12 +169,40 @@ def five_height(surface, x, y):
 
 
 class CalibrationScan(SurfaceScan):
-    """Reuse bounded XY/probe/retract machinery without ever writing G10."""
+    """Bounded local maps, with optional initial Z reference for full tests."""
 
     kind = "calibration"
 
+    def start_cycle(self, controller, payload, origin, area_size):
+        """Reference touch first, then the profile grid; preserve global XY."""
+        if controller.offset is None:
+            raise ValueError("Brak aktualnego WCO.")
+        result = ZProbe.start(self, controller, {
+            **payload, "distance": MAX_PROBE_TRAVEL, "feed": 20})
+        self.auto_reference = True
+        self.kind = "profile_test"
+        self.map_id = secrets.token_hex(12)
+        self.job_id = None
+        self.valid, self.reason = False, None
+        self.reference_xy = origin[:]
+        self.expected_xy_offset = controller.offset[:2]
+        self.offset = self.reference = None
+        self.sampling = False
+        self.clearance, self.below, self.feed = 1, .4, 20
+        self.columns = self.rows = 3
+        x, y = origin
+        width, height = area_size
+        self.area = {"X": [x, x+width], "Y": [y, y+height]}
+        self.points = [{"number": row*3+index+1, "x": x+column*width/2,
+                        "y": y+row*height/2}
+                       for row in range(3)
+                       for index, column in enumerate(range(3) if row%2 == 0 else range(2,-1,-1))]
+        self.samples = []
+        return result
+
     def start_local(self, controller, payload, origin, area_size=None):
         """Validate current position, raise, then touch exactly five points."""
+        self.auto_reference = False
         if controller.offset is None:
             raise ValueError("Brak aktualnego WCO.")
         position = controller.report.get("position")
@@ -221,8 +250,8 @@ class CalibrationScan(SurfaceScan):
         return result
 
     def tick(self, controller):
-        """The first command is a retract, never the reference-zero descent."""
-        if self.state == "starting":
+        """Legacy maps retract first; full cycles retain the reference descent."""
+        if self.state == "starting" and not getattr(self, "auto_reference", False):
             # Let the shared tick handle expiry/cancellation before any write.
             self.command = "G0Z1"
         super().tick(controller)
@@ -253,6 +282,9 @@ class Calibration:
         self.mode = "service"
         self.profile_identity = None
         self.repeat_snapshot = None
+        self.cycle = None
+        self.cycle_lease = None
+        self.cycle_heartbeat_at = 0
         self.profile_path = profile_path or (
             Path.home() / ".local/share/bark-beetle/milling-profile.json"
         )
@@ -273,7 +305,79 @@ class Calibration:
                 "base": self.base, "settings": self.config,
                 "map": self.scan.status(), "job": self.runner.status(),
                 "history": self.history, "profile": self.profile,
-                "repeat": self.repeat_status()}
+                "repeat": self.repeat_status(),
+                "cycle": copy.deepcopy(self.cycle)}
+
+    def start_cycle(self, controller, payload):
+        """One operator confirmation authorizes reference, grid and one cut."""
+        from monitor.profile_test import configuration, layout
+        if payload.get("fixed_probe") is not True:
+            raise ValueError("Test wymaga stałego podłączenia sondy do wrzeciona.")
+        config = configuration(self.profiles, payload)
+        plan = layout(config)
+        if payload.get("session") != self.session:
+            raise ValueError("Sesja testu zmieniła się.")
+        controller._status()
+        position = controller.report.get("position")
+        if position is None:
+            raise ValueError("Brak aktualnej pozycji CNC.")
+        origin = position[:2]
+        if not (-300 <= origin[0] <= 300-plan["width"] and -180 <= origin[1] <= 180-plan["height"]):
+            raise ValueError("Pole testu przekracza dopuszczalny zakres.")
+        self.scan.start_cycle(controller, payload, origin, (plan["width"], plan["height"]))
+        self.invalidate_repeat("Rozpoczęto nowy test profilu.")
+        controller.surface.invalidate("Rozpoczęto test profilu z nowym zerem Z.")
+        controller.probe.completed_job_id = None
+        self.session = secrets.token_hex(12)
+        self.base, self.origin, self.index = origin[:], origin[:], 0
+        self.config, self.mode = config, "profile_test"
+        self.profile_identity = {"id": self.profiles.active["id"], "fingerprint": self.profiles.active["fingerprint"]}
+        self.cycle = {"phase": "probing", "active": True, "error": None}
+        self.cycle_lease = secrets.token_urlsafe(24)
+        self.cycle_heartbeat_at = time.monotonic()
+        controller.last_probe = self.scan
+        return {"cycle_lease": self.cycle_lease}
+
+    def heartbeat_cycle(self, lease):
+        if not self.cycle or not self.cycle["active"] or not isinstance(lease, str) or not self.cycle_lease or not secrets.compare_digest(lease, self.cycle_lease):
+            raise ValueError("Nieprawidłowa sesja testu profilu.")
+        self.cycle_heartbeat_at = time.monotonic()
+        if self.scan.active():
+            self.scan.heartbeat(self.scan.lease)
+        elif self.runner.active():
+            self.runner.heartbeat(self.runner.lease)
+
+    def cancel_cycle(self):
+        if self.cycle and self.cycle["active"]:
+            self.cycle.update(active=False, phase="stopped")
+        self.cycle_lease = None
+
+    def tick_cycle(self, controller):
+        """Advance exactly once in the USB owner, never from HTTP polling."""
+        if not self.cycle or not self.cycle["active"]:
+            return
+        if self.cycle["phase"] == "probing":
+            if self.scan.active():
+                return
+            try:
+                if self.scan.state != "completed" or not self.scan.valid:
+                    raise ValueError(self.scan.error or "Pomiar Z nie został zakończony.")
+                if time.monotonic()-self.cycle_heartbeat_at > 8:
+                    raise ValueError("Utrata kontaktu z przeglądarką przed frezowaniem.")
+                self.cut(controller, {"confirmed": True, "fixed_probe": True,
+                    "session": self.session, "map_id": self.scan.map_id,
+                    "position": list(controller.report["position"]),
+                    "profile_id": self.profile_identity["id"],
+                    "profile_fingerprint": self.profile_identity["fingerprint"]}, True)
+                self.cycle["phase"] = "cutting"
+            except Exception as error:
+                self.cycle.update(active=False, phase="failed", error=str(error))
+                self.cycle_lease = None
+                if isinstance(error, RuntimeError):
+                    controller._close(str(error))
+        elif not self.runner.active():
+            self.cycle.update(active=False, phase=self.runner.state, error=self.runner.error)
+            self.cycle_lease = None
 
     def repeat_status(self):
         """Expose eligibility only; the captured execution stays server-side."""
@@ -373,7 +477,7 @@ class Calibration:
         if self.mode != ("profile_test" if profile_test else "service"):
             raise ValueError("Mapa pochodzi z innego trybu; powtórz pomiar.")
         if payload.get("confirmed") is not True or (
-            payload.get("clip_removed") is not True
+            payload.get("clip_removed") is not True and not (profile_test and payload.get("fixed_probe") is True)
         ):
             raise ValueError("Potwierdź zdjęcie krokodylka z frezu.")
         if payload.get("session") != self.session or (
@@ -452,7 +556,7 @@ class Calibration:
             raise ValueError("Brak aktualnego, zakończonego testu do powtórki.")
         if payload.get("confirmed") is not True or (
             payload.get("setup_unchanged") is not True
-            or payload.get("clip_removed") is not True
+            or (payload.get("clip_removed") is not True and payload.get("fixed_probe") is not True)
         ):
             raise ValueError("Potwierdź niezmieniony frez, laminat, "
                              "mocowanie i zdjęcie przewodu sondy.")

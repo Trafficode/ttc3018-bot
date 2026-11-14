@@ -83,6 +83,7 @@ class Controller:
         self.report = None
         self.report_time = None
         self.offset = None
+        self.project_datum = None
         self.error = "Niepodłączona — połącz przy maszynie."
         self.info = []
         self.jobs = JobRunner()
@@ -93,6 +94,8 @@ class Controller:
         self.calibration = Calibration(profile_path)
 
     def _close(self, error):
+        self.calibration.cancel_cycle()
+        self.project_datum = None
         self.calibration.invalidate("Połączenie CNC zostało przerwane.")
         self.surface.invalidate("Połączenie CNC zostało przerwane.")
         self.probe_tested = False
@@ -134,6 +137,10 @@ class Controller:
             self.probe_tested = True
         if "WCO" in report:
             self.offset = report["WCO"]
+            if self.project_datum and any(abs(a-b) > .002 for a, b in zip(
+                self.offset[:2], self.project_datum["offset"]
+            )):
+                self.project_datum = None
             scan = self.calibration.scan
             if scan.offset is not None and any(
                 abs(a - b) > 0.002 for a, b in zip(self.offset, scan.offset)
@@ -234,6 +241,7 @@ class Controller:
                 "fresh": fresh,
                 "state": self.report["state"] if fresh else None,
                 "position": self.report["position"] if fresh else None,
+                "project_datum": self.project_datum,
                 "reason": self.error,
                 "age_seconds": age,
                 "info": self.info,
@@ -290,7 +298,10 @@ class Controller:
     def action(self, action, payload):
         """Exclude all other senders while a probe owns the serial stream."""
         with self.lock:
+            if action == "profile_test_heartbeat":
+                return self.calibration.heartbeat_cycle(payload.get("lease"))
             if action == "probe_stop":
+                self.calibration.cancel_cycle()
                 return self.last_probe.cancel()
             if action == "probe_heartbeat":
                 return self.last_probe.heartbeat(payload.get("lease"))
@@ -300,6 +311,9 @@ class Controller:
                 "job_pause", "job_resume", "job_stop", "job_heartbeat"
             ):
                 raise ValueError("Próba aktywna — użyj Pauzy lub Stop.")
+            if action in ("probe_start", "surface_start", "job_start"):
+                if not self.jobs.active():
+                    self.check_project_datum()
             if action in ("profile_create", "profile_update", "profile_select",
                           "profile_delete"):
                 if self.jobs.active():
@@ -341,7 +355,7 @@ class Controller:
                 return
             if action in ("service_prepare", "service_cut", "service_save",
                           "profile_test_prepare", "profile_test_cut",
-                          "profile_test_finish"):
+                          "profile_test_finish", "profile_test_start"):
                 if self.jobs.active() or self.calibration.runner.active():
                     raise ValueError("Najpierw zakończ aktywny program.")
                 if action == "service_save":
@@ -349,6 +363,8 @@ class Controller:
                 if self.port is None:
                     raise ValueError("Najpierw połącz CNC.")
                 try:
+                    if action == "profile_test_start":
+                        return self.calibration.start_cycle(self, payload)
                     if action == "profile_test_finish":
                         return self.calibration.finish(self, payload)
                     if action in ("service_prepare", "profile_test_prepare"):
@@ -380,6 +396,21 @@ class Controller:
             if action == "probe_polarity":
                 return self._probe_polarity(payload)
             return self._action(action, payload)
+
+    def check_project_datum(self):
+        """Project jobs require the explicit, still-live material setup."""
+        flow = (self.jobs.program or {}).get("pcb_flow") or {}
+        if not flow.get("projectSetupId"):
+            return
+        datum = self.project_datum
+        if self.port is None or not datum or datum["setupId"] != flow["projectSetupId"] or (
+            datum["id"] != flow.get("datumId")
+        ):
+            raise ValueError("Potwierdź zero X/Y w projekcie i wczytaj etap ponownie.")
+        offset = live_offset(self._line("$#"))[:2]
+        if any(abs(a-b) > .002 for a, b in zip(offset, datum["offset"])):
+            self.project_datum = None
+            raise ValueError("Zero X/Y projektu zmieniło się. Ustaw je ponownie.")
 
     def _probe_polarity(self, payload):
         """Change only $6 after explicit confirmation; never invert UI alone."""
@@ -429,6 +460,8 @@ class Controller:
         runner = (self.calibration.runner if self.calibration.runner.active()
                   else self.jobs)
         if action in ("job_pause", "job_resume", "job_stop"):
+            if action == "job_stop":
+                self.calibration.cancel_cycle()
             if action == "job_resume" and payload.get("confirmed") is not True:
                 raise ValueError("Wymagane potwierdzenie wznowienia.")
             return runner.control(action[4:], payload.get("job_id"))
@@ -593,6 +626,9 @@ class Controller:
                 self._line(command)
                 # Changing zero invalidates the cached work offset.
                 if action.startswith("zero_"):
+                    if action == "zero_xy":
+                        self.project_datum = None
+                    self.probe.completed_job_id = None
                     self.offset = None
                     self.surface.invalidate("Ręcznie zmieniono zero materiału.")
                     self.calibration.invalidate("Ręcznie zmieniono zero.")
@@ -622,6 +658,7 @@ class Controller:
                         self._status()
                     except Exception as error:
                         self._close(str(error))
+                self.calibration.tick_cycle(self)
         with self.lock:
             if self.last_probe.active():
                 self.last_probe.abort(

@@ -72,29 +72,43 @@ follows the rectangle's aspect ratio rather than keeping a square empty area.
 
 The initial X/Y is the lower left of the displayed probe rectangle, not the
 edge of the first copper strip. Keep that whole field over fresh copper and
-clear of clamps. A subsequent field advances by its height plus 1.5 mm in Y.
-Check **Nowy test od aktualnego X/Y** after changing position or material.
+clear of clamps. Legacy separate preparation can advance the field by its height plus 1.5 mm in Y.
+The unified test always captures the current X/Y as its local origin. It does
+not rewrite G54 X/Y or automatically select a subsequent field.
 
 ## Operator flow
 
-1. Select a profile on the top bar and inspect the fixed conditions and pattern.
-2. Set the existing material zero. Place Z between 0 and 3 mm, verify probe
-   contact and reopen the clips. Check clearance over the full rectangle.
-3. Explicitly confirm **Zmierz 9 punktów Z**. The controller visits a serpentine
-   3 x 3 grid using the existing probe guards. It never rewrites the work zero.
-   Probing is F20 from Z=1 to Z=-0.4: maximum search travel 1.4 mm.
-4. Inspect signed Z samples relative to existing Z=0. The cut uses bilinear
-   height interpolation within that grid, with no extrapolation.
-5. Remove the clip and cable from the tool, check the checkbox and separately
-   confirm **Frezuj test profilu**. Mapping never starts milling automatically.
-   The map is consumed after starting; retries require a fresh field/map.
+1. Select the saved V-bit profile and inspect its fixed conditions and pattern.
+2. Jog above fresh copper. Current X/Y is the local lower-left origin of the
+   test field. Place the tip within the 1.4 mm initial contact search distance;
+   no prior manual Z zero is required. Verify probe contact and release.
+3. Press **Uruchom test profilu** and confirm the entire cycle once. The RPi
+   references G54 Z using a bounded F20 contact, retracts to Z=1, maps the 3×3
+   field, then automatically starts exactly one compensated pattern cut.
+   G54 X/Y is preserved. Every mapped descent remains bounded to 1.4 mm.
+4. Monitor reference, mapping and cutting in the same view. Stop is available
+   throughout. A failed/stopped scan, stale owner heartbeat, profile/offset
+   drift or invalid map prevents transition to cutting. There is no automatic
+   retry and no transition triggered by status polling or reopening the page.
+5. Inspect the completed pattern. A finishing pass still requires a separate
+   explicit operator command. For a new test, jog onto fresh copper first.
 
-The original uploaded job has its own runner and is never replaced by this
-test. One probe/runner owns the serial stream at a time. Session, profile,
-position, work offset and map validity are checked before execution. Changing
-the selected profile invalidates the test map. Lease heartbeats and global
-Stop use the existing operator controller. No software validation claims a
-measured physical milling accuracy.
+The probe lead is permanently attached to the spindle housing, not the rotating
+cutter, and may remain attached during PCB milling. The test UI does not require
+clip removal or a second start. The wire must remain clear of the moving axes.
+One confirmation explicitly authorizes Z reference, mapping and spindle/cutting.
+
+The combined `profile_test_start` action requires the saved profile identity,
+current session/position, `confirmed: true` and `fixed_probe: true`. It returns a
+private `cycle_lease`; only its owning browser can renew it with
+`profile_test_heartbeat`. The lease spans both probing and cutting. It is never
+included in status, persisted, or restored after restart. Observers cannot
+continue the cycle. Existing standalone service preparation/cutting remains
+independent; legacy profile preparation/cut routes remain for compatibility.
+
+The original uploaded job has its own runner and is never replaced by the test.
+A new Z reference invalidates the production surface map and point-probe
+evidence. One probe/runner owns the serial stream at a time.
 
 ## Rapid vertical approach and manual finishing
 
@@ -107,7 +121,7 @@ not change manual jog, probing, service coupons or uploaded NC programs.
 
 After confirmed completion, the panel offers **Powtórz przejazd wykańczający**.
 The operator can clean and inspect the PCB with spindle stopped, then confirm
-unchanged material, clamping, tool, zero and removed probe cable. A separate
+unchanged material, clamping, tool and zero, with the fixed probe wire clear of motion. A separate
 dialog starts exactly one additional pass, using the same profile and depth.
 No pass starts automatically and no additional cutting depth is added.
 
@@ -147,5 +161,5 @@ nine-point contacts, preservation of work zero, profile/mode/clip interlocks,
 exact copper dimensions, tool-sweep coverage, immutable versions and fixed
 CAM depth. Browser validation uses a loopback fixture at 1440 x 900, 390 x 844
 and 360 x 740. It covers independent service inputs, fixed test parameters,
-preview, nine measured values, separate confirmations, one explicit cut and
+preview, nine measured values, a single confirmed reference/map/cut cycle and
 revision creation. All physical probing and cutting remain operator actions.
