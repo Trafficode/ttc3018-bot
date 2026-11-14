@@ -11,6 +11,17 @@ from datetime import datetime, timezone
 from monitor.cam import write_json
 
 
+def require_pad_trim_acceptance(item, payload):
+    """Approval belongs to one immutable CAM result, never a global switch."""
+    review = item.get("report", {}).get("padTrimReview") or {}
+    if not review.get("requiresAcceptance"):
+        return None
+    expected = {"camId": item["id"], "reviewId": review["id"]}
+    if payload.get("acceptedPadTrim") != expected:
+        raise ValueError("Sprawdź czerwone obszary na podglądzie i zaakceptuj zwężenie padów.")
+    return expected
+
+
 class PcbProgress:
     """Progress shares the CAM lock and tracks one exact loaded sender job."""
 
@@ -58,6 +69,7 @@ class PcbProgress:
         """Explicitly load only the next operation after tool/setup review."""
         with self.collection.lock, cnc.lock:
             item = self.collection.get(item_id)
+            accepted = require_pad_trim_acceptance(item, payload)
             if item.get("processProfile") and self.process_profiles:
                 self.process_profiles.assert_snapshot(item["processProfile"])
             sequence = item.get("report", {}).get("sequence", [])
@@ -84,10 +96,16 @@ class PcbProgress:
                                            "xyOffset": progress.get("xyOffset"),
                                            "surfaceSpreadMm": progress.get(
                                                "surfaceSpreadMm", 0),
+                                           "padTrimReviewId": (accepted or {}).get("reviewId"),
+                                           "padTrimAcceptedId": (accepted or {}).get("reviewId"),
                                            **operation})
             progress["loaded"] = {"index": index, "session": self.session,
                                   "jobId": cnc.jobs.job_id}
             progress.pop("requiresReload", None)
+            if accepted:
+                progress.setdefault("geometryAcceptances", []).append({
+                    **accepted, "acceptedAt": datetime.now(timezone.utc).isoformat(),
+                    "jobId": cnc.jobs.job_id})
             write_json(self.collection.directory(item_id) / "progress.json",
                        progress)
             return progress

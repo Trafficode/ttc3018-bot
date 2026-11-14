@@ -6,6 +6,7 @@
 """Geometry-only CAM: no machine, serial, network or controller dependencies."""
 
 import io
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -14,9 +15,9 @@ import zipfile
 
 from gerbonara import GerberFile
 from gerbonara.utils import MM
-from shapely import affinity, make_valid
-from shapely.geometry import GeometryCollection, LineString, Polygon, box
-from shapely.ops import polygonize, unary_union
+from shapely import affinity, make_valid, set_precision, voronoi_polygons
+from shapely.geometry import GeometryCollection, LineString, MultiPoint, Polygon, box
+from shapely.ops import linemerge, polygonize, unary_union
 
 from monitor.jobs import WORD, parse_program
 from monitor.profiles import check_cam_program, validate_depth
@@ -170,6 +171,51 @@ def contour_paths(copper, diameter):
     return paths
 
 
+def trimmed_contour_paths(copper, diameter):
+    """Share tight gaps at their medial line instead of merging tool offsets.
+
+    Voronoi territories belong to original connected copper islands. The
+    actual cutter may enter both islands; its emitted sweep is checked below.
+    This is a planar candidate, never permission to start a machine.
+    """
+    targets = polygons(copper)
+    if len(targets) < 2 or len(targets) > 256:
+        raise ValueError("Zwężenie padów wymaga 2–256 oddzielnych obszarów miedzi.")
+    sites = {}
+    for owner, target in enumerate(targets):
+        for ring in [target.exterior, *target.interiors]:
+            for x, y in ring.segmentize(.05).coords:
+                point = (round(x, 9), round(y, 9))
+                if point in sites and sites[point] != owner:
+                    raise ValueError("Stykające się obszary miedzi wymagają poprawy projektu.")
+                sites[point] = owner
+        if len(sites) > 30000:
+            raise ValueError("Zbyt złożony layout do zwężania padów.")
+    cells = list(voronoi_polygons(MultiPoint(list(sites)), ordered=True).geoms)
+    if len(cells) != len(sites):
+        raise ValueError("Nie udało się wyznaczyć środka ciasnych szczelin.")
+    groups = [[] for _ in targets]
+    for cell, owner in zip(cells, sites.values()):
+        groups[owner].append(set_precision(make_valid(cell), .0000001))
+    boundaries = []
+    for target, group in zip(targets, groups):
+        territory = unary_union(group)
+        expanded = target.buffer(diameter/2 + MARGIN, quad_segs=32)
+        boundaries.append(expanded.intersection(territory).boundary)
+    network = unary_union(boundaries)
+    if network.geom_type != "LineString":
+        network = linemerge(network)
+    lines = [network] if network.geom_type == "LineString" else list(network.geoms)
+    paths = []
+    for line in lines:
+        if line.length < .001:
+            continue
+        path = [[round(x, 5), round(y, 5)] for x, y in line.simplify(.002).coords]
+        if len(set(map(tuple, path))) > 1:
+            paths.append(path)
+    return paths
+
+
 def emit_program(paths, profile, clearance):
     """Emit one linear GRBL operation, with no inherited modal state."""
     diameter, depth, conditions = tool_parameters(profile)
@@ -220,23 +266,25 @@ def emitted_paths(program):
     return unary_union(paths)
 
 
-def verify_sweep(copper, stock, program, diameter):
+def verify_sweep(copper, stock, program, diameter, *, allow_loss=False):
     """Reject copper loss, unreachable boundaries and remaining-stock shorts."""
     paths = emitted_paths(program)
     swept = paths.buffer(diameter / 2, quad_segs=32)
     loss = swept.intersection(copper.buffer(-.001)).area
     inaccessible = copper.boundary.difference(
         swept.buffer(TOLERANCE + MARGIN))
-    findings = []
+    findings, notices = [], []
     if loss > .0001:
         point = swept.intersection(copper).representative_point()
-        findings.append({"message": "Frez narusza chronioną miedź.",
-                         "x": point.x, "y": point.y})
+        (notices if allow_loss else findings).append({
+            "message": "Zwężenie padów i ścieżek: frez usuwa część projektowanej miedzi.",
+            "x": point.x, "y": point.y} if allow_loss else {
+            "message": "Frez narusza chronioną miedź.", "x": point.x, "y": point.y})
     if inaccessible.length > .02:
         pieces = list(getattr(inaccessible, "geoms", [inaccessible]))
         for part in sorted(pieces, key=lambda item: -item.length)[:20]:
             point = part.interpolate(.5, normalized=True)
-            findings.append({"message": "Frez nie mieści się przy tej "
+            (notices if allow_loss else findings).append({"message": "Frez nie mieści się przy tej "
                              "krawędzi lub w szczelinie.",
                              "x": point.x, "y": point.y})
     remaining = polygons(stock.difference(swept))
@@ -253,6 +301,7 @@ def verify_sweep(copper, stock, program, diameter):
         else:
             owners[matches[0]] = index
     return {"passed": not findings, "findings": findings[:30],
+            "warnings": notices[:30],
             "protectedIslands": len(targets),
             "copperLossMm2": loss,
             "inaccessibleBoundaryMm": inaccessible.length,
@@ -279,7 +328,7 @@ def mechanical_preview(data, project, clearance, directory):
     return report, preview
 
 
-def generate(data, project, profile, clearance, directory):
+def generate(data, project, profile, clearance, directory, *, allow_pad_trim=False):
     """Return evidence and NC only if every planar and format gate passes."""
     diameter, depth, conditions = tool_parameters(profile)
     copper, stock = read_archive(data, project, directory)
@@ -288,10 +337,35 @@ def generate(data, project, profile, clearance, directory):
     paths = contour_paths(copper, diameter)
     content, program = emit_program(paths, profile, clearance)
     checks = verify_sweep(copper, stock, program, diameter)
+    review = None
+    removed = GeometryCollection()
+    if not checks["passed"] and allow_pad_trim:
+        paths = trimmed_contour_paths(copper, diameter)
+        content, program = emit_program(paths, profile, clearance)
+        checks = verify_sweep(copper, stock, program, diameter, allow_loss=True)
+        swept = emitted_paths(program).buffer(diameter/2, quad_segs=32)
+        removed = copper.intersection(swept)
+        changes = []
+        for target in polygons(copper):
+            loss = target.intersection(swept)
+            if loss.area > .0001:
+                point = loss.representative_point()
+                changes.append({"x": point.x, "y": point.y,
+                    "areaMm2": loss.area, "percent": loss.area/target.area*100})
+        if checks["passed"] and changes:
+            review = {"kind": "pad-trim/v1", "removedAreaMm2": removed.area,
+                      "affectedIslands": changes, "requiresAcceptance": True}
+            review["id"] = hashlib.sha256(json.dumps({
+                "source": project, "profile": profile["fingerprint"],
+                "program": content, "review": review}, sort_keys=True).encode()).hexdigest()
     preview = {"bounds": list(stock.bounds), "paths": paths,
                "copper": [[list(region.exterior.coords),
                             *[list(ring.coords) for ring in region.interiors]]
-                           for region in polygons(copper)]}
+                           for region in polygons(copper)],
+               "removedCopper": [[list(region.exterior.coords),
+                                  *[list(ring.coords) for ring in region.interiors]]
+                                 for region in polygons(removed)],
+               "padTrimReviewId": review["id"] if review else None}
     report = {"engine": ENGINE, "transform": transform,
               "diameterMm": diameter, "depthMm": depth,
               "clearanceMm": clearance, "conditions": conditions,
@@ -300,6 +374,7 @@ def generate(data, project, profile, clearance, directory):
                            "gerberArcErrorMm": .001},
               "checks": checks, "boundsMm": program["bounds_mm"],
               "commands": len(program["lines"]),
+              "padTrimReview": review,
               "operations": {"isolation": "ready" if checks["passed"]
                              else "blocked", "drilling": "not_prepared",
                              "outline": "not_prepared"}}

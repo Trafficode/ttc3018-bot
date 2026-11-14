@@ -32,6 +32,12 @@ Never advance automatically across drill diameters or stages. Show the source
 layout/probe plan independently of CAM; keep recovery actions secondary. A
 "Tylko pomiar Z" diagnostic measurement must never authorize machining.
 
+Project isolation may generate a pad/track reduction candidate for tight gaps.
+Keep the real calibrated cutter footprint and show the predicted copper loss.
+Require explicit approval bound to the exact CAM and review IDs before loading
+or probing. Remaining shorts, erased islands and severed conductors still block.
+Never implement this by globally ignoring geometry checks or faking tool width.
+
 Use apply_patch for source edits. Keep documentation under docs/ in simple
 English. Validate shell syntax, Python compilation and relevant hardware tests.
 Do not describe a tested setup on one host as a validated fresh-image install.

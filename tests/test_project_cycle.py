@@ -155,4 +155,31 @@ class ProjectCycleTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.store.execute(self.request())
         self.assertEqual(self.cnc.port.writes,[])
 
+    def test_trim_review_stops_before_probe_and_requires_exact_result_acceptance(self):
+        original=self.fixture.cam.start
+        def with_review(*args):
+            item=original(*args)
+            self.fixture.cam.items[item['id']]['report']['padTrimReview']={
+                'id':'review-fixture','requiresAcceptance':True,'removedAreaMm2':.12}
+            return item
+        self.fixture.cam.start=with_review
+        self.store.execute(self.request());self.wait_phase('review')
+        self.assertFalse(self.cnc.project_cycle.active())
+        self.assertEqual(self.cnc.port.writes,[])
+        self.assertIsNone(self.cnc.jobs.job_id)
+        item=next(iter(self.fixture.cam.items.values()))
+        with self.assertRaisesRegex(ValueError,'zaakceptuj'):
+            self.fixture.progress.load(item['id'],{'index':0,'confirmedTool':True,
+                'confirmedReference':True},self.cnc)
+        for accepted in (None,True,{'camId':item['id'],'reviewId':'old'},
+                         {'camId':'b'*64,'reviewId':'review-fixture'}):
+            self.store.execute(self.request(acceptedPadTrim=accepted));self.wait_phase('review')
+            with self.assertRaisesRegex(ValueError,'zaakceptuj'):
+                self.store.load({**self.request(acceptedPadTrim=accepted),'confirmedTool':True})
+        accepted={'camId':item['id'],'reviewId':'review-fixture'}
+        self.store.execute(self.request(acceptedPadTrim=accepted));self.wait_phase('probing')
+        self.assertEqual(self.cnc.jobs.program['pcb_flow']['padTrimAcceptedId'],'review-fixture')
+        self.complete_probe();self.cnc.project_cycle.tick(self.cnc)
+        self.assertEqual(self.cnc.project_cycle.record['phase'],'cutting')
+
 if __name__=='__main__':unittest.main()

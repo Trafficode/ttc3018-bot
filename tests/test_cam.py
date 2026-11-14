@@ -150,6 +150,50 @@ class GeometryTests(unittest.TestCase):
         self.assertFalse(report["passed"])
         self.assertGreater(report["copperLossMm2"], 1)
 
+    def test_trim_candidate_enters_gap_and_quantifies_real_copper_loss(self):
+        from monitor.cam_geometry import emitted_paths
+        from shapely.geometry import Point
+        report, preview, content = generate(archive(.1), self.project,
+            profile(), 3, self.directory, allow_pad_trim=True)
+        self.assertTrue(report["checks"]["passed"], report["checks"])
+        self.assertTrue(content)
+        self.assertGreater(report["checks"]["copperLossMm2"], .01)
+        self.assertTrue(preview["removedCopper"])
+        review = report["padTrimReview"]
+        self.assertTrue(review["requiresAcceptance"])
+        self.assertEqual(preview["padTrimReviewId"], review["id"])
+        self.assertEqual(len(review["affectedIslands"]), 2)
+        from monitor.jobs import parse_program
+        paths = emitted_paths(parse_program('fixture.nc', content))
+        self.assertLess(paths.distance(Point(15.95, 3)), .003)
+        changed = profile();changed["depth"] = .06
+        changed["fingerprint"] = fingerprint(changed)
+        other, _, _ = generate(archive(.1), self.project, changed, 3,
+            self.directory, allow_pad_trim=True)
+        self.assertNotEqual(other["padTrimReview"]["id"], review["id"])
+
+    def test_wide_gaps_keep_original_paths_without_a_trim_consent(self):
+        regular, old_preview, old = generate(archive(), self.project,
+            profile(), 3, self.directory)
+        candidate, preview, content = generate(archive(), self.project,
+            profile(), 3, self.directory, allow_pad_trim=True)
+        self.assertEqual(content, old)
+        self.assertIsNone(candidate["padTrimReview"])
+        self.assertEqual(preview["removedCopper"], [])
+
+    def test_trim_permission_still_rejects_severed_or_erased_conductors(self):
+        from monitor.cam_geometry import verify_sweep
+        copper = box(2, 2, 4, 4).union(box(7, 2, 9, 4))
+        paths = contour_paths(copper, .34)
+        for extra in ([[[1, 3], [5, 3]]],
+                      [[[1, 2+i*.1], [5, 2+i*.1]] for i in range(21)]):
+            with self.subTest(paths=len(extra)):
+                _, program = emit_program(paths+extra, profile(), 3)
+                checks = verify_sweep(copper, box(0, 0, 20, 20), program, .34,
+                                      allow_loss=True)
+                self.assertFalse(checks["passed"])
+                self.assertTrue(checks["findings"])
+
     def test_common_origin_mirror_is_not_individual_centering(self):
         copper, stock, transform = transform_geometry(
             box(12, -18, 14, -16), box(10, -20, 30, 0), "B.Cu")

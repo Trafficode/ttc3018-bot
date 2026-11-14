@@ -159,6 +159,10 @@ class CamCollection:
                    "project": package["project"],
                    "profile": copy.deepcopy(profile) if needs_isolation else {},
                    "clearanceMm": clearance, "engine": ENGINE}
+        if payload.get("allowPadTrim") is not None:
+            if type(payload["allowPadTrim"]) is not bool or not needs_isolation:
+                raise ValueError("Zwężanie padów dotyczy tylko izolacji PCB.")
+            request["allowPadTrim"] = payload["allowPadTrim"]
         request["implementationHashes"] = implementation_hashes()
         if process_profile:
             request["processProfile"] = copy.deepcopy(process_profile)

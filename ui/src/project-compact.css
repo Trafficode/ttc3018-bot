@@ -9,6 +9,10 @@
 .stage-secondary .text-button{font-size:12px!important;min-height:36px!important}
 .stage-actions{display:flex;gap:8px;margin:16px 0}.stage-actions button{flex:1}
 .stage-error{font-size:12px;line-height:1.5;color:var(--red);margin:8px 0;padding:8px 10px;border-left:2px solid var(--red);background:#fbefec;max-height:88px;overflow:auto}
+.pad-trim-review{padding:10px 12px;border:1px solid #d2a655;border-radius:4px;background:#fff5df;margin:10px 0;font-size:12px;line-height:1.45}
+.pad-trim-review p{margin:5px 0 9px}.pad-trim-review label{display:flex;align-items:flex-start;gap:9px;cursor:pointer}
+.pad-trim-review input{width:18px!important;height:18px!important;min-height:18px!important;flex:none;margin:2px 0 0}
+.pad-trim-legend{color:#a62626;font-weight:600}
 .stage-workspace .project-grid-settings{padding:12px;margin:12px 0;border:0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);border-radius:0}
 .stage-workspace .project-grid-settings small{display:block;margin-top:8px;color:var(--muted);font-size:12px}
 .stage-workspace .grid-counts{max-width:280px;gap:12px}
@@ -20,6 +24,13 @@
 .stage-workspace .cam-preview canvas{max-height:340px;width:100%}
 .stage-workspace .cam-preview figcaption{margin:6px 0;font-size:11px!important}
 @media(min-width:761px){
+ .compact .tool-scroll>section:has(.pcb-project){padding-bottom:8px}
+ .compact .stage-workspace:has(.pad-trim-review) .stage-tool-heading{margin-bottom:8px}
+ .compact .stage-workspace:has(.pad-trim-review) .project-grid-settings{display:flex;align-items:center;gap:12px;padding:8px 0}
+ .compact .stage-workspace:has(.pad-trim-review) .grid-counts{width:180px;flex:none}
+ .compact .stage-workspace:has(.pad-trim-review) .project-grid-settings small{margin:0;font-size:11px;flex:1}
+ .compact .stage-workspace:has(.pad-trim-review) .project-primary{margin:10px 0 6px}
+ .compact .stage-workspace:has(.pad-trim-review) .stage-secondary{margin:4px 0}
  .compact .pcb-project .project-heading{min-height:42px;margin:0 0 8px}
  .compact .pcb-project .project-heading h2{font-size:20px}
  .compact .pcb-project .project-heading p{display:none}

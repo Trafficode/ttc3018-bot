@@ -38,6 +38,33 @@ production job identity; executing a stage always measures again against the exa
 validated program bounds. Outline measurement uses the selected mill-radius frame.
 **Ponów przygotowanie** is a small secondary recovery action after CAM failure.
 
+### Tight gaps and pad reduction
+
+Project isolation first tries the original protected-copper contours. If they
+cannot isolate the board, its isolated worker may compute a reduction candidate:
+sampled boundary Voronoi territories share tight gaps at their approximate medial
+line. The actual calibrated diameter and fixed depth do not change. The emitted
+rounded NC is checked again: each original connected copper island must still
+intersect exactly one remaining conductor, and different islands cannot share
+one conductor. Erased islands, split conductors and remaining bridges block.
+Only copper loss and inaccessible detail become warnings in this candidate.
+This planar check does not certify pad annular rings, current capacity or assembly.
+
+The secondary **Przygotuj podgląd** action computes a missing preview after
+material/tool selection, including while CNC is disconnected; it never probes.
+The preview overlays predicted removed copper in red and quantifies its area.
+`report.padTrimReview` contains the source/profile/program-bound review ID.
+If approval is absent, the execute cycle ends in inactive `review` phase before
+loading or probing. The operator must inspect the preview, tick the reduction
+approval and explicitly start again. Approval is not persisted as a reusable UI
+preference. Changing setup, stock, profile or CAM clears it. Both project loading
+and legacy progress loading require `acceptedPadTrim: {camId, reviewId}` matching
+the exact immutable result. Loading records a timestamped acceptance and binds it
+to the job metadata; Start checks that binding. The source CAD is untouched.
+Wide gaps retain the original program without a reduction approval. Legacy CAM
+remains strict unless explicitly requested with `allowPadTrim: true`. Geometry
+parser checks, source/artifact hashes, operator lease, XY, Z and Stop gates remain.
+
 One setup binds the source package, measured thickness and live G54 X/Y offset.
 All stages must retain that X/Y datum. Position with Move, select the project,
 and press **Ustaw tutaj zero X/Y** in the common material section. This single
@@ -77,7 +104,9 @@ Operator-only routes require `X-PiloMill-Token`; POST requires same-origin JSON:
 - `POST /api/pcb-projects/execute`: setup/stage, thickness, selected profile
   ID/fingerprint, current position, grid counts, `confirmed: true`,
   `fixed_probe: true` and through-cut approval when applicable. Returns the private
-  `project_cycle_lease`. `/measure` uses the same boundary but never cuts.
+  `project_cycle_lease`. A reduction candidate additionally requires the exact
+  `acceptedPadTrim` pair described above before any probing can begin. `/measure`
+  never accepts reduction as authority to cut and never starts machining.
 - CNC actions `project_cycle_heartbeat` and `project_cycle_stop` renew/cancel the
   cycle. Global Stop cancels preparation too; it cannot accidentally start probing.
 - `POST /api/pcb-projects/load`: `setupId`, `stage`, `confirmedTool: true`, and
@@ -112,8 +141,8 @@ validation and failed independent Gerber readback still block production. Legacy
 Single-file NC import remains a separate entry from the project list. Existing
 manual control and saved profiles remain available. Manual Zero and contact-test
 settings live in the advanced Service disclosure (also reachable from NC import).
-Project, Move and Profiles are the main navigation. Confirmed material setup
-collapses to a summary. Desktop uses bounded forms, aligned parameter columns
+Project, Move and Profiles are the main navigation. Common material and XY setup
+use a compact toolbar. Desktop uses bounded forms, aligned parameter columns
 and a preview next to the operation controls; mobile stacks the same controls.
 
 Validation covers offline geometry/CAM, sender doubles and intercepted browser

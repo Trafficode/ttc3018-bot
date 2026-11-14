@@ -19,6 +19,7 @@ from monitor.cam import implementation_hashes, write_json
 from monitor.compensation import live_offset
 from monitor.library import HASH
 from monitor.pcb_flow import number
+from monitor.pcb_progress import require_pad_trim_acceptance
 from monitor.project_bundle import bundle_summary
 
 KINDS = ("isolation", "drilling", "outline")
@@ -123,11 +124,17 @@ class PcbProjects:
                         raise ValueError("Etap jest już wykonany. Wybierz następny etap.")
                     if not current or current.get("stale") or current.get("state") in ("failed", "blocked", "interrupted") or current.get("profile", {}).get("fingerprint") != payload.get("fingerprint"):
                         if attempted:
-                            raise ValueError(current.get("error") or "Etap nie przeszedł sprawdzenia geometrii.")
+                            findings = current.get("report", {}).get("checks", {}).get("findings", [])
+                            raise ValueError(current.get("error") or (findings[0]["message"] if findings else "Etap nie przeszedł sprawdzenia geometrii."))
                         if not self.cam.current:
                             self.prepare(payload, cycle=True)
                             attempted = True
                     elif current.get("state") == "ready" and not self.cam.current:
+                        try:
+                            require_pad_trim_acceptance(self.cam.get(current["camId"]), payload)
+                        except ValueError as error:
+                            cycle.fail(error, "review")
+                            return
                         cycle.record["phase"] = "loading"
                         self.load({**payload, "confirmedTool": True}, cycle=True)
                         cycle.begin_probe(self.cnc, payload)
@@ -289,6 +296,8 @@ class PcbProjects:
             request = {"packageId": package["id"], "name": record["name"],
                        "confirmedDatum": True, "profileFingerprint":
                            payload.get("fingerprint")}
+            if kind == "isolation":
+                request["allowPadTrim"] = True
             selection = {} if kind == "isolation" else {kind: {
                 "id": payload.get("profileId"),
                 "fingerprint": payload.get("fingerprint")}}
@@ -363,6 +372,7 @@ class PcbProjects:
             ):
                 raise ValueError("Przygotowanie narzędzia wymaga stanu Idle.")
             item = self.cam.get(run["stages"][kind])
+            require_pad_trim_acceptance(item, payload)
             # Capture completion of the previous tool before replacing its
             # sender job, even if the operator switches faster than polling.
             self._state(run)
@@ -396,7 +406,8 @@ class PcbProjects:
                 self.cnc.action("profile_select", {
                     "profile_id": item["profile"]["id"]})
             self.progress.load(item["id"], {"index": len(progress["completed"]),
-                "confirmedTool": True, "confirmedReference": True}, self.cnc,
+                "confirmedTool": True, "confirmedReference": True,
+                "acceptedPadTrim": payload.get("acceptedPadTrim")}, self.cnc,
                 xy_offset=offset)
             self.cnc.jobs.program["pcb_flow"].update(
                 projectSetupId=run["id"], packageId=run["packageId"], datumId=datum["id"])

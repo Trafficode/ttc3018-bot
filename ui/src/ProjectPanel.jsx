@@ -12,7 +12,7 @@ export const projectStages=[{id:'isolation',label:'Ścieżki',title:'Frezowanie 
   {id:'outline',label:'Obrys',title:'Wycięcie PCB',icon:IconCut}];
 const legacyCapabilities={isolation:{available:true},outline:{available:true},
   drilling:{available:false,reason:'Wyślij ponownie projekt z aktualnego Tractora, aby rozpoznać otwory THT.'}};
-const phaseText=stage=>stage?.done?'Wykonano':stage?.stale?'Do przygotowania':stage?.state==='running'?'Przygotowanie':stage?.zReady?'Z gotowe':stage?.state==='ready'?'Pomiar Z':stage?.state==='failed'||stage?.state==='blocked'?'Problem':'Do wykonania';
+const phaseText=stage=>stage?.done?'Wykonano':stage?.stale?'Do przygotowania':stage?.state==='running'?'Przygotowanie':stage?.zReady?'Z gotowe':stage?.state==='ready'?(stage.report?.padTrimReview?.requiresAcceptance?'Zmiana padów':'Pomiar Z'):stage?.state==='failed'||stage?.state==='blocked'?'Problem':'Do wykonania';
 
 export function ProjectPanel({controller,ask,onManual,onPreparing,probeDistance,probeFeed,onMove}){
   const [packages,setPackages]=useState([]),[selected,setSelected]=useState('');

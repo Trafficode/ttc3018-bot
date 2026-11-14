@@ -41,7 +41,8 @@ def main():
         if "isolation" in requested:
             report, preview, content = generate(
                 source, request["project"], request["profile"],
-                request["clearanceMm"], directory)
+                request["clearanceMm"], directory,
+                allow_pad_trim=request.get("allowPadTrim") is True)
             ready = content is not None
         else:
             report, preview = mechanical_preview(

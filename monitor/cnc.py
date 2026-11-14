@@ -498,6 +498,8 @@ class Controller:
                     raise ValueError("Wymagane potwierdzenie operatora.")
                 flow = self.jobs.program.get("pcb_flow")
                 if flow:
+                    if flow.get("padTrimReviewId") and flow.get("padTrimAcceptedId") != flow["padTrimReviewId"]:
+                        raise ValueError("Brak akceptacji zwężenia padów dla tego programu.")
                     recipes = getattr(self, "process_profiles", None)
                     if recipes and flow.get("processProfile"):
                         recipes.assert_snapshot(flow["processProfile"])

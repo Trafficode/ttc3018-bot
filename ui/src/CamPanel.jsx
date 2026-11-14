@@ -30,6 +30,8 @@ export function ToolpathPreview({geometry, findings=[], probePoints=[], showDatu
     if(showDatum){const [bx,by]=point([gx0,gy1]);context.strokeStyle='#c8c4ba';context.lineWidth=1;context.strokeRect(bx,by,(gx1-gx0)*scale,(gy1-gy0)*scale);}
     context.fillStyle='#b98b54';
     geometry.copper.forEach(rings=>{context.beginPath();rings.forEach(ring=>{trace(ring);context.closePath();});context.fill('evenodd');});
+    context.fillStyle='rgba(187,37,37,.72)';
+    (geometry.removedCopper||[]).forEach(rings=>{context.beginPath();rings.forEach(ring=>{trace(ring);context.closePath();});context.fill('evenodd');});
     context.strokeStyle='#087f8c';context.lineWidth=.8;
     geometry.paths.forEach(path=>{context.beginPath();trace(path);context.stroke();});
     (geometry.holes||[]).forEach(hole=>{const[x,y]=point(hole.point);context.beginPath();context.arc(x,y,hole.diameterMm*scale/2,0,Math.PI*2);context.stroke();});
@@ -42,7 +44,7 @@ export function ToolpathPreview({geometry, findings=[], probePoints=[], showDatu
     context.fillStyle='#bb2525';
     findings.forEach(item=>{const[x,y]=point([item.x,item.y]);context.beginPath();context.arc(x,y,4,0,Math.PI*2);context.fill();});
   },[geometry,findings,probePoints,showDatum,compactLabel]);
-  return <figure class="cam-preview"><canvas ref={canvas} width="720" height={compactLabel?360:520} role="img" aria-label="Podgląd od strony frezowania. Miedź brązowa, środek ścieżki frezu niebieski, problemy czerwone."/><figcaption>{compactLabel||<>Miedź · ścieżka frezu · {findings.length ? 'problemy zaznaczone na czerwono' : 'widok od strony obróbki'}<small>G54: lewy dolny narożnik · +X w prawo · +Y w górę</small></>}</figcaption></figure>;
+  return <figure class="cam-preview"><canvas ref={canvas} width="720" height={compactLabel?360:520} role="img" aria-label="Podgląd od strony frezowania. Miedź brązowa, środek ścieżki frezu niebieski, problemy czerwone."/><figcaption>{geometry.removedCopper?.length>0&&<strong class="pad-trim-legend">Czerwone pola: usuwana miedź · </strong>}{compactLabel||<>Miedź · ścieżka frezu · {findings.length ? 'problemy zaznaczone na czerwono' : 'widok od strony obróbki'}<small>G54: lewy dolny narożnik · +X w prawo · +Y w górę</small></>}</figcaption></figure>;
 }
 
 export function CamPrograms({controller, api, locked, initial, onLoaded, onSource}) {

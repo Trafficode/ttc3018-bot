@@ -49,7 +49,7 @@ export function createController(fetcher = fetch, clock = globalThis) {
     if (offline.value) return {tone: attempted.value ? 'error' : 'info', text: attempted.value ? 'Brak odpowiedzi panelu. Stan CNC nieznany — sprawdź maszynę.' : 'Łączenie z panelem stanowiska…'};
     if (cnc.value.connected && !cnc.value.fresh) return {tone: 'error', text: 'Brak aktualnego odczytu CNC. Sprawdź maszynę; sterowanie jest zablokowane.'};
     if (cnc.value.state === 'Alarm') return {tone: 'error', text: 'Sterownik zgłasza alarm. Sprawdź maszynę i wrzeciono.'};
-    if (cnc.value.project_cycle?.active && cnc.value.project_cycle.phase==='preparing') return {tone:'info',text:cnc.value.project_cycle.measureOnly?'Przygotowanie pomiaru Z bez obróbki.':'Przygotowanie przejazdów. Po sprawdzeniu rozpocznie się pomiar Z i obróbka.'};
+    if (cnc.value.project_cycle?.active && cnc.value.project_cycle.phase==='preparing') return {tone:'info',text:cnc.value.project_cycle.measureOnly?'Przygotowanie pomiaru Z bez obróbki.':'Przygotowanie przejazdów. Zwężenie padów wymaga akceptacji podglądu przed ruchem.'};
     if (cnc.value.project_cycle?.phase==='failed' && cnc.value.project_cycle.error) return {tone:'error',text:cnc.value.project_cycle.error};
     if (probing.value) return {tone: 'warning', text: ['surface', 'calibration', 'profile_test'].includes(cnc.value.z_probe.kind) ? `Pomiar powierzchni: ${cnc.value.z_probe.completed} / ${cnc.value.z_probe.total} punktów. Pozostań przy stanowisku.` : 'Automatyczne zero Z: sondowanie aktywne. Pozostań przy stanowisku.'};
     if (job.value.state === 'failed') return {tone: 'error', text: job.value.error || 'Błąd programu. Sprawdź maszynę; nie ponawiaj poleceń w ciemno.'};
