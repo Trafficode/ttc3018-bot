@@ -94,6 +94,20 @@ class ProbeTests(unittest.TestCase):
         self.assertFalse(self.cnc.status()["probe_tested"])
         self.assertIsNone(self.cnc.status()["probe_triggered"])
 
+    def test_failed_probe_retains_exact_attempt_for_diagnostics(self):
+        self.cnc._accept_status('<Idle|MPos:0,0,7.182|WCO:0,0,5>')
+        self.payload.update(position=[0,0,2.182],distance=1.4)
+        self.start();self.receive('ALARM:5\n')
+        attempt=self.cnc.probe.status()['attempt']
+        self.assertEqual(attempt['phase'],'reference')
+        self.assertEqual(attempt['start'][:2],[0,0])
+        self.assertAlmostEqual(attempt['start'][2],2.182)
+        self.assertAlmostEqual(attempt['targetZ'],.782)
+        self.assertAlmostEqual(attempt['distanceMm'],1.4)
+        self.assertEqual(attempt['feedMmMin'],20)
+        self.assertNotIn('lease',self.cnc.probe.status())
+        self.assertTrue(self.port.closed)
+
     def test_confirmation_bounds_and_actual_pin_test_required(self):
         for key, value in (
             ("confirmed", False), ("distance", 0), ("distance", 10.1),

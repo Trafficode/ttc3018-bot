@@ -38,6 +38,14 @@ Require explicit approval bound to the exact CAM and review IDs before loading
 or probing. Remaining shorts, erased islands and severed conductors still block.
 Never implement this by globally ignoring geometry checks or faking tool width.
 
+Project Z reference permits at most 10 mm travel; subsequent surface-grid
+descents remain capped at 1.4 mm. Project probes use G38.3: only a coherent
+PRB success=0, command acknowledgement and fresh Idle/unchanged WCO may end as a
+recoverable no-contact result while retaining USB and XY. Never mark Z valid,
+start cutting, retry automatically or reset zero on this result. Stop, timeout,
+lost ownership, unexpected alarms and inconsistent position still abort safely.
+Show current execution blockers separately from historical probe failures.
+
 Use apply_patch for source edits. Keep documentation under docs/ in simple
 English. Validate shell syntax, Python compilation and relevant hardware tests.
 Do not describe a tested setup on one host as a validated fresh-image install.

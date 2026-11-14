@@ -395,7 +395,7 @@ class Controller:
                         self.surface if action == "surface_start"
                         else self.probe
                     )
-                    result = runner.start(self, payload)
+                    result = runner.start(self, payload, recoverable_miss=project_cycle)
                     self.calibration.invalidate_repeat("Rozpoczęto sondowanie.")
                     self.last_probe = runner
                     if action == "probe_start":

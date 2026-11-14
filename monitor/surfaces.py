@@ -113,7 +113,7 @@ class SurfaceScan(ZProbe):
         })
         return result
 
-    def start(self, controller, payload, *, standalone_bounds=None, standalone_outline=False):
+    def start(self, controller, payload, *, standalone_bounds=None, standalone_outline=False, recoverable_miss=False):
         program = controller.jobs.program
         if standalone_bounds is None and (program is None or payload.get("job_id") != controller.jobs.job_id):
             raise ValueError("Plik zmienił się; odśwież plan.")
@@ -130,11 +130,12 @@ class SurfaceScan(ZProbe):
         clearance = float(payload.get("clearance", 1))
         below = float(payload.get("below", 0.4))
         distance = float(payload.get("distance", MAX_PROBE_TRAVEL))
+        reference_limit = 10 if recoverable_miss else MAX_PROBE_TRAVEL
+        if not math.isfinite(distance) or not .1 <= distance <= reference_limit:
+            raise ValueError(f"Pierwszy zjazd Z: wymagane 0,1–{reference_limit:g} mm.")
         if not math.isfinite(clearance) or not 1 <= clearance <= 1.3 or (
             not math.isfinite(below) or not 0.1 <= below <= 0.4
             or clearance + below > MAX_PROBE_TRAVEL + 1e-9
-            or not math.isfinite(distance)
-            or not 0.1 <= distance <= MAX_PROBE_TRAVEL
         ):
             raise ValueError(
                 "Maksymalny zjazd sondy: 1,4 mm. Prześwit 1–1,3 mm, "
@@ -142,7 +143,8 @@ class SurfaceScan(ZProbe):
             )
         if controller.offset is None:
             raise ValueError("Brak odczytu WCO; zaczekaj na status CNC.")
-        result = super().start(controller, {**payload, "distance": distance})
+        result = super().start(controller, {**payload, "distance": distance},
+                               recoverable_miss=recoverable_miss)
         self.reference_xy = controller.report["position"][:2]
         self.expected_xy_offset = controller.offset[:2]
         self.map_id = secrets.token_hex(12)
@@ -217,16 +219,20 @@ class SurfaceScan(ZProbe):
                 raise RuntimeError("Niepoprawna pozycja lub styk przed próbą.")
             self.start_machine = machine[:]
             self.contact = None
+            self.missed = False
+            self.miss_position = None
             self.sampling = True
             # Respect the travel cap even if reported Z differs slightly from
             # the commanded clearance because of step/position rounding.
             target = max(-self.below, position[2] - MAX_PROBE_TRAVEL)
             self.distance = position[2] - target
+            self.record_attempt(position, float(f'{target:.4f}'), self.feed,
+                                phase="grid", point=point["number"], offset=controller.offset)
             self.deadline = (
                 time.monotonic() + self.distance / self.feed * 60 + 8
             )
             self._write(controller,
-                        f"G90G38.2Z{target:.4f}F{self.feed:g}", "probing")
+                        f"G90{'G38.3' if self.recoverable_miss else 'G38.2'}Z{target:.4f}F{self.feed:g}", "probing")
         elif self.state == "contact_wait":
             if any(abs(machine[i] - self.start_machine[i]) > 0.01
                    for i in (0, 1)) or not (

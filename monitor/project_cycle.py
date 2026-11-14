@@ -64,9 +64,9 @@ class ProjectCycle:
         current = cnc.status()
         if stage == "drilling":
             options = {"confirmed": True, "position": current["position"],
-                       "distance": payload.get("distance", 1.4), "feed": payload.get("feed", 20)}
+                       "distance": payload.get("distance", 10), "feed": payload.get("feed", 20)}
             if self.record["measureOnly"]:
-                cnc.probe.start(cnc, options)
+                cnc.probe.start(cnc, options, recoverable_miss=True)
                 cnc.surface.invalidate("Wykonano osobny pomiar Z.")
                 cnc.last_probe = cnc.probe
             else:
@@ -81,11 +81,11 @@ class ProjectCycle:
             options = {"confirmed": True, "position": current["position"],
                 "job_id": cnc.jobs.job_id, "columns": columns, "rows": rows,
                 "area": {"X": bounds["X"][:], "Y": bounds["Y"][:]},
-                "clearance": 1, "below": .4, "distance": 1.4, "feed": 20,
+                "clearance": 1, "below": .4, "distance": payload.get("distance", 10), "feed": 20,
                 "perimeterOnly": stage == "outline"}
             if self.record["measureOnly"]:
                 cnc.surface.start(cnc, options, standalone_bounds=bounds,
-                                  standalone_outline=stage == "outline")
+                                  standalone_outline=stage == "outline", recoverable_miss=True)
                 cnc.last_probe = cnc.surface
             else:
                 cnc.action("surface_start", options, project_cycle=True)

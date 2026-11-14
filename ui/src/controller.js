@@ -1,7 +1,10 @@
 import {signal, computed} from '@preact/signals';
 
 export function probeFailureText(message) {
-  return String(message).replace(/\bALARM:5\b/g, 'ALARM:5 — sterownik nie wykrył styku w zadanym zakresie zjazdu. Sprawdź kontakt elektryczny z miedzią i zakres zjazdu dla bieżącej próby.');
+  const raw=String(message||'');
+  if(raw.includes('PROBE_NO_CONTACT'))return 'Nie wykryto styku w dopuszczalnym zjeździe. Ustaw frez ponownie nad miedzią i ponów etap. Nie ustawiono zera Z i nie uruchomiono obróbki.';
+  if(!/\bA?LARM:5\b/.test(raw))return raw;
+  return 'ALARM:5 — sonda nie wykryła styku z miedzią w zadanym zakresie zjazdu. Sprawdź położenie frezu nad miedzią, odległość od powierzchni i obwód sondy.';
 }
 
 export const activeStates = ['running', 'draining', 'pausing', 'paused', 'resuming'];
@@ -28,6 +31,7 @@ export function createController(fetcher = fetch, clock = globalThis) {
   let probeLease = null;
   let cycleLease = null;
   let projectCycleLease = null;
+  const acknowledgedProjectFailure = signal(null);
   let running = false;
   let pollTimer;
   let heartbeatTimer;
@@ -48,12 +52,17 @@ export function createController(fetcher = fetch, clock = globalThis) {
   const notice = computed(() => {
     if (offline.value) return {tone: attempted.value ? 'error' : 'info', text: attempted.value ? 'Brak odpowiedzi panelu. Stan CNC nieznany — sprawdź maszynę.' : 'Łączenie z panelem stanowiska…'};
     if (cnc.value.connected && !cnc.value.fresh) return {tone: 'error', text: 'Brak aktualnego odczytu CNC. Sprawdź maszynę; sterowanie jest zablokowane.'};
-    if (cnc.value.state === 'Alarm') return {tone: 'error', text: 'Sterownik zgłasza alarm. Sprawdź maszynę i wrzeciono.'};
+    if (cnc.value.state === 'Alarm') return {tone: 'error', text: cnc.value.z_probe?.error ? probeFailureText(cnc.value.z_probe.error) : 'Sterownik zgłasza alarm. Sprawdź maszynę i wrzeciono.'};
+    const failure=cnc.value.project_cycle;
+    const probeRecovered=failure?.phase==='failed'&&/\bA?LARM:5\b/.test(failure.error||'')&&cnc.value.connected&&cnc.value.fresh&&cnc.value.state==='Idle'&&cnc.value.probe_tested===true;
     if (cnc.value.project_cycle?.active && cnc.value.project_cycle.phase==='preparing') return {tone:'info',text:cnc.value.project_cycle.measureOnly?'Przygotowanie pomiaru Z bez obróbki.':'Przygotowanie przejazdów. Zwężenie padów wymaga akceptacji podglądu przed ruchem.'};
-    if (cnc.value.project_cycle?.phase==='failed' && cnc.value.project_cycle.error) return {tone:'error',text:cnc.value.project_cycle.error};
+    if (failure?.phase==='failed' && failure.error && failure.id!==acknowledgedProjectFailure.value && !probeRecovered) {
+      const reconnected=cnc.value.connected&&cnc.value.fresh&&cnc.value.state==='Idle';
+      return {tone:reconnected?'warning':'error',text:`Poprzednia próba: ${probeFailureText(failure.error)}${reconnected&&!cnc.value.probe_tested?' Teraz powtórz test STYK → BRAK STYKU.':''}`,dismissible:true};
+    }
     if (probing.value) return {tone: 'warning', text: ['surface', 'calibration', 'profile_test'].includes(cnc.value.z_probe.kind) ? `Pomiar powierzchni: ${cnc.value.z_probe.completed} / ${cnc.value.z_probe.total} punktów. Pozostań przy stanowisku.` : 'Automatyczne zero Z: sondowanie aktywne. Pozostań przy stanowisku.'};
     if (job.value.state === 'failed') return {tone: 'error', text: job.value.error || 'Błąd programu. Sprawdź maszynę; nie ponawiaj poleceń w ciemno.'};
-    if (actionError.value) return {tone: 'error', text: actionError.value, dismissible: true};
+    if (actionError.value&&!probeRecovered) return {tone: 'error', text: probeFailureText(actionError.value), dismissible: true};
     if (profileError.value) return {tone:'error', text:profileError.value, dismissible:true};
     if (job.value.state === 'stopped' && acknowledgedStop.value !== stopEpoch.value) return {tone: 'warning', text: 'Program przerwany. Sprawdź wrzeciono, połączenie i zero materiału.', dismissible: true};
     if (connectionLost && !cnc.value.connected) return {tone: 'error', text: 'Utracono połączenie CNC. Sprawdź maszynę i wrzeciono.'};
@@ -142,6 +151,7 @@ export function createController(fetcher = fetch, clock = globalThis) {
       error('Stan CNC, pozycja lub plik zmieniły się. Polecenie nie zostało wysłane.'); return false;
     }
     if (execute) {
+      actionError.value='';
       pending.value = payload.action;
       try { const result=await execute(); if(result?.project_cycle_lease)projectCycleLease=result.project_cycle_lease; return true; }
       catch (cause) { error(cause.message); return false; }
@@ -168,6 +178,7 @@ export function createController(fetcher = fetch, clock = globalThis) {
   function start() { if (running) return; running = true; poll(); heartbeat(); }
   function stop() { running = false; clock.clearTimeout(pollTimer); clock.clearTimeout(heartbeatTimer); clock.clearTimeout(messageTimer); }
   function acknowledge() {
+    if(cnc.value.project_cycle?.phase==='failed'&&cnc.value.project_cycle.id!==acknowledgedProjectFailure.value){acknowledgedProjectFailure.value=cnc.value.project_cycle.id;actionError.value='';latest.value='';return;}
     if (actionError.value) actionError.value = '';
     else if (profileError.value) profileError.value = '';
     else if (job.value.state === 'stopped') {acknowledgedStop.value = stopEpoch.value; latest.value = '';}

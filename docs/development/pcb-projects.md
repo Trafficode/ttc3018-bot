@@ -38,6 +38,41 @@ production job identity; executing a stage always measures again against the exa
 validated program bounds. Outline measurement uses the selected mill-radius frame.
 **Ponów przygotowanie** is a small secondary recovery action after CAM failure.
 
+### Probe readiness and retry
+
+The Project view lists every current condition preventing execution beside the
+Start button. The same readiness result drives the disabled state and its text:
+connection/fresh Idle, current coordinates, probe test/released input, live XY
+datum, valid material/tool, source bounds, geometry and exact reduction approval.
+Diagnostic measurement has its own smaller set of prerequisites. A failed older
+cycle is historical evidence, not a permanent execution interlock. Recovery
+details link to Move without moving or zeroing anything automatically.
+
+Project execution and diagnostic probing authorize a first reference descent of
+up to 10 mm below the current position, stopping at contact. The confirmation
+shows current XY, start/target Z, limit and feed; work Z is not a measurement of
+the physical air gap. Following a successful reference, every grid descent is
+still capped at 1.4 mm from the measured clearance. Manual/legacy surface scans
+retain their existing reference cap. All existing contact, modal, ownership,
+coordinate and machine-state guards apply.
+
+Project probes use G38.3. A missing contact is recoverable only after the controller
+reports a coherent PRB success=0 at the commanded limit, acknowledges the command
+and confirms fresh Idle, unchanged XY/WCO and a released probe. The probe and
+cycle end without assigning Z or starting any machining. USB, XY, selected tool,
+CAM and the still-connected probe-contact test remain available. The operator
+corrects the position/circuit and starts a fresh cycle; incomplete maps are never
+reused. There is no automatic retry, withdrawal or move on this outcome.
+Unexpected ALARM/error, bad probe coordinates, timeout, Stop or lost heartbeat
+still abort/reset/close as before because a stopped machine cannot be assumed.
+
+`z_probe.attempt` retains phase (reference/grid), point number, start XYZ, target
+Z, travel and feed in status/diagnostics. Failed-probe details show the old attempt
+separately from current readiness. ALARM:5 means no contact in the programmed
+travel, not a CAM rejection. The historical alarm can be acknowledged and clears
+from the primary banner after genuine reconnection/contact-test recovery or a
+new explicit start. It never grants a valid map or bypasses machine guards.
+
 ### Tight gaps and pad reduction
 
 Project isolation first tries the original protected-copper contours. If they

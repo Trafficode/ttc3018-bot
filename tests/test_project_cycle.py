@@ -125,6 +125,54 @@ class ProjectCycleTests(unittest.TestCase):
         self.assertEqual(len(self.fixture.cam.items),1)
         self.assertFalse(self.cnc.last_probe.active());self.assertEqual(self.cnc.port.writes,[])
 
+    def test_ten_mm_reference_miss_keeps_connection_datum_and_can_restart(self):
+        self.cnc._accept_status('<Idle|MPos:0,0,7.182|WCO:0,0,5>')
+        request=self.request();request.pop('distance')
+        self.store.execute(request);self.wait_phase('probing')
+        self.assertEqual(self.cnc.surface.command,'G90G38.3Z-7.8180F20')
+        self.assertAlmostEqual(self.cnc.surface.status()['attempt']['distanceMm'],10)
+        datum=copy.deepcopy(self.cnc.project_datum)
+        self.receive('[PRB:0,0,-2.818:0]\nok\n')
+        self.assertEqual(self.cnc.surface.state,'no_contact_wait')
+        self.assertTrue(self.cnc.surface.active())
+        self.receive('<Idle|MPos:0,0,-2.818|WCO:0,0,5>\n')
+        self.cnc.project_cycle.tick(self.cnc)
+        self.assertEqual(self.cnc.project_cycle.record['phase'],'failed')
+        self.assertIn('PROBE_NO_CONTACT',self.cnc.surface.error)
+        self.assertFalse(self.cnc.surface.active());self.assertFalse(self.cnc.surface.valid)
+        self.assertFalse(self.cnc.port.closed);self.assertEqual(self.cnc.project_datum,datum)
+        self.assertTrue(self.cnc.status()['probe_tested'])
+        self.assertFalse(any(b'\x18' in c or b'M3' in c or b'G10' in c for c in self.cnc.port.writes))
+        # The operator corrects position. A new explicit start can reuse CAM/XY.
+        self.cnc._accept_status('<Idle|MPos:0,0,6|WCO:0,0,5>')
+        self.store.execute(self.request(distance=10));self.wait_phase('probing')
+        self.complete_probe();self.cnc.project_cycle.tick(self.cnc)
+        self.assertEqual(self.cnc.project_cycle.record['phase'],'cutting')
+        self.assertEqual(len(self.fixture.cam.items),1)
+
+    def test_grid_miss_is_recoverable_but_each_grid_descent_stays_bounded(self):
+        self.store.execute(self.request(distance=10));self.wait_phase('probing')
+        self.receive('[PRB:0,0,5:1]\nok\n<Idle|MPos:0,0,4.998|Pn:P>\n')
+        self.receive('ok\nok\n<Idle|MPos:0,0,6|WCO:0,0,5>\n')
+        self.receive('ok\n<Idle|MPos:0,0,6|WCO:0,0,5>\n')
+        attempt=self.cnc.surface.status()['attempt']
+        self.assertEqual(attempt['phase'],'grid');self.assertEqual(attempt['point'],1)
+        self.assertLessEqual(attempt['distanceMm'],1.4+1e-9)
+        self.assertIn(b'G90G38.3Z-0.4000F20\n',self.cnc.port.writes)
+        self.receive('[PRB:0,0,4.6:0]\nok\n<Idle|MPos:0,0,4.6|WCO:0,0,5>\n')
+        self.cnc.project_cycle.tick(self.cnc)
+        self.assertEqual(self.cnc.project_cycle.record['phase'],'failed')
+        self.assertFalse(self.cnc.port.closed);self.assertIsNotNone(self.cnc.project_datum)
+        self.assertFalse(self.cnc.jobs.active());self.assertFalse(self.cnc.surface.valid)
+
+    def test_unconfirmed_miss_position_still_aborts_instead_of_recovering(self):
+        self.store.execute(self.request(distance=10));self.wait_phase('probing')
+        port=self.cnc.port
+        self.receive('[PRB:0,0,-4:0]\nok\n<Idle|MPos:1,0,-4|WCO:0,0,5>\n')
+        self.assertTrue(port.closed)
+        self.assertIsNone(self.cnc.project_datum)
+        self.assertFalse(self.cnc.jobs.active())
+
     def test_changed_datum_after_probe_prevents_start(self):
         self.store.execute(self.request());self.wait_phase('probing')
         self.complete_probe();self.cnc.project_datum=None

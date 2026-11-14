@@ -13,6 +13,13 @@
 .pad-trim-review p{margin:5px 0 9px}.pad-trim-review label{display:flex;align-items:flex-start;gap:9px;cursor:pointer}
 .pad-trim-review input{width:18px!important;height:18px!important;min-height:18px!important;flex:none;margin:2px 0 0}
 .pad-trim-legend{color:#a62626;font-weight:600}
+.execution-readiness{padding:9px 11px;margin:10px 0;border-left:3px solid #c18a29;background:#fff5df;font-size:12px;line-height:1.45}
+.execution-readiness.ready{border:0;background:none;padding:0;margin:4px 0;color:#287b5c;font-size:11px}.execution-readiness ul{margin:5px 0 0;padding-left:18px}.execution-readiness li+li{margin-top:5px}.execution-readiness small{display:block;margin-top:5px}
+.probe-recovery,.project-reference{margin:10px 0;border:1px solid var(--border);border-radius:4px;padding:9px 11px;font-size:12px;line-height:1.5}
+.probe-recovery{border-color:#d2a655;background:#fff8e9}.probe-recovery summary,.project-reference summary{cursor:pointer;font-weight:600;list-style:disclosure-closed inside;min-height:24px}
+.probe-recovery[open] summary,.project-reference[open] summary{list-style-type:disclosure-open}.probe-recovery p,.project-reference p{margin:7px 0}.probe-travel{font-variant-numeric:tabular-nums;color:var(--muted);font-size:11px}.project-reference .text-button,.probe-recovery .text-button{font-size:12px!important;min-height:32px!important}
+.project-reference{border:0;padding:0;margin:6px 0}.project-reference summary{min-height:28px}
+@media(max-width:760px){.probe-recovery summary,.project-reference summary{min-height:44px}.project-reference .text-button,.probe-recovery .text-button{min-height:44px!important}}
 .stage-workspace .project-grid-settings{padding:12px;margin:12px 0;border:0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);border-radius:0}
 .stage-workspace .project-grid-settings small{display:block;margin-top:8px;color:var(--muted);font-size:12px}
 .stage-workspace .grid-counts{max-width:280px;gap:12px}
@@ -42,6 +49,8 @@
  .compact .project-stage-tabs small{grid-column:auto;font-size:10px;opacity:.85}
  .compact .stage-workspace .operation-layout{grid-template-columns:minmax(0,1.5fr) minmax(290px,1fr);gap:24px}
  .compact .stage-workspace .project-primary{margin:16px 0 8px;max-width:none;min-height:44px}
+ .compact .stage-workspace .project-primary{position:sticky;bottom:0;z-index:2;box-shadow:0 0 0 5px var(--surface)}
+ .compact .stage-workspace .project-primary:disabled{opacity:1;background:#ecebe6;color:#969997}
  .compact .stage-tool-heading h3{font-size:18px;margin:0}
  .compact .stage-workspace .cam-preview canvas{max-height:clamp(220px,calc(100dvh - 440px),340px)}
  .compact .pcb-project .cam-confirm{margin:6px 0 10px}

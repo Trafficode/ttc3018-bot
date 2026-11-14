@@ -13,6 +13,7 @@ import time
 ACTIVE = {
     "starting", "probing", "contact_wait", "zero_ack", "retract_ack",
     "retract_wait",
+    "no_contact_wait",
 }
 
 
@@ -33,6 +34,11 @@ class ZProbe:
         self.start_machine = None
         self.completed_job_id = None
         self.completed_offset = None
+        self.attempt = None
+        self.recoverable_miss = False
+        self.missed = False
+        self.miss_position = None
+        self.attempt_offset = None
 
     def active(self):
         """Retain USB ownership through contact, zeroing and retraction."""
@@ -42,9 +48,16 @@ class ZProbe:
         """Expose phase and outcome, never the browser lease."""
         return {"kind": "point", "state": self.state, "active": self.active(),
                 "job_id": self.completed_job_id,
-                "error": self.error}
+                "error": self.error, "attempt": self.attempt}
 
-    def start(self, controller, payload):
+    def record_attempt(self, position, target, feed, *, phase="reference", point=None, offset=None):
+        """Retain the exact attempted travel for recovery, never infer a gap."""
+        self.attempt = {"phase": phase, "point": point, "start": list(position),
+                        "targetZ": target, "distanceMm": position[2]-target,
+                        "feedMmMin": feed}
+        self.attempt_offset = list(offset) if offset is not None else None
+
+    def start(self, controller, payload, *, recoverable_miss=False):
         """Validate fresh physical state before queuing a bounded descent."""
         self.completed_job_id = None
         self.completed_offset = None
@@ -97,9 +110,15 @@ class ZProbe:
         self.contact = None
         self.receive = b""
         self.cancel_requested = False
+        self.recoverable_miss = recoverable_miss
+        self.missed = False
+        self.miss_position = None
         self.start_machine = machine[:]
         self.distance = distance
-        self.command = f"G90G38.2Z{position[2] - distance:.4f}F{feed:g}"
+        mode = 'G38.3' if self.recoverable_miss else 'G38.2'
+        self.command = f"G90{mode}Z{position[2] - distance:.4f}F{feed:g}"
+        self.record_attempt(position, float(f'{position[2]-distance:.4f}'), feed,
+                            offset=controller.offset)
         self.lease = secrets.token_urlsafe(24)
         self.heartbeat_at = time.monotonic()
         self.deadline = self.heartbeat_at + distance / feed * 60 + 8
@@ -143,7 +162,7 @@ class ZProbe:
                 raise RuntimeError("Nieoczekiwany wynik sondowania.")
             coordinates, success = line[5:-1].rsplit(":", 1)
             point = [float(value) for value in coordinates.split(",")]
-            if not line.endswith("]") or success != "1" or (
+            if not line.endswith("]") or success not in ("0", "1") or (
                 len(point) != 3 or not all(math.isfinite(v) for v in point)
             ):
                 raise RuntimeError("Sondowanie nie potwierdziło kontaktu.")
@@ -153,9 +172,19 @@ class ZProbe:
             target = self.start_machine[2]
             if not target - self.distance - 0.01 <= point[2] <= target:
                 raise RuntimeError("Kontakt poza drogą sondowania.")
+            if success == "0":
+                if not self.recoverable_miss:
+                    raise RuntimeError("Sondowanie nie potwierdziło kontaktu.")
+                if self.missed or abs(point[2]-(target-self.distance)) > .01:
+                    raise RuntimeError("Niespójny koniec zjazdu bez styku.")
+                self.missed = True
+                self.miss_position = point
+                return
             self.contact = point
         elif line == "ok":
-            if self.state == "probing" and self.contact is not None:
+            if self.state == "probing" and self.missed:
+                self.state = "no_contact_wait"
+            elif self.state == "probing" and self.contact is not None:
                 self.state = "contact_wait"
             elif self.state == "zero_ack":
                 controller.offset = None
@@ -178,6 +207,18 @@ class ZProbe:
             ):
                 raise RuntimeError("Zmiana X/Y podczas sondowania.")
             if report["state"] != "Idle":
+                return
+            if self.state == "no_contact_wait":
+                if machine is None or self.miss_position is None or any(
+                    abs(a-b) > .01 for a, b in zip(machine, self.miss_position)
+                ) or self.attempt_offset is None or controller.offset is None or any(
+                    abs(a-b) > .002 for a, b in zip(controller.offset, self.attempt_offset)
+                ) or report["probe_triggered"]:
+                    raise RuntimeError("Nie potwierdzono bezczynności i pozycji po zjeździe bez styku.")
+                self.state = "failed"
+                self.error = "PROBE_NO_CONTACT — Nie wykryto styku z miedzią w dozwolonym zjeździe. Ustaw frez nad miedzią i ponów etap."
+                self.lease = None
+                controller.surface.invalidate(self.error)
                 return
             if self.state == "contact_wait":
                 machine = report.get("MPos")
