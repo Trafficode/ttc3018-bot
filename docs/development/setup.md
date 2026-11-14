@@ -59,6 +59,29 @@ fingerprint in its local terminal with
 Use `IdentitiesOnly=yes`, `BatchMode=yes` and `StrictHostKeyChecking=yes`.
 Do not disable host-key checks to resolve a connection error.
 
+## Persistent, read-only CNC diagnostics
+
+The monitor's stdout/stderr is already collected by the system journal. On the
+tested Pi the journal is volatile; query it with
+`journalctl _SYSTEMD_USER_UNIT=ttc-monitor.service` (a user-unit query alone may
+show no entries). To retain troubleshooting evidence across reboots, install
+`systemd/ttc-diagnostics.service` as a user unit and enable/start that unit only.
+It does not require restarting the existing monitor or opening CNC USB.
+
+The independent recorder reads only loopback GET `/api/status` every two seconds
+and follows the monitor's existing journal. It writes private, timestamped JSON
+under `~/.local/share/bark-beetle/diagnostics/cnc-diagnostics.jsonl`, with five
+rotated backups and a 10 MiB limit per file (approximately 60 MiB maximum).
+It records changes in position, state, job/probe progress, errors and service
+messages. Status credentials and camera images are excluded. A 60-second heartbeat
+distinguishes a quiet controller from a stopped recorder. This is sampled
+diagnostics, not an exact serial transcript or a replacement for controller logs.
+
+The helper never imports the controller, sends POST requests, loads a program,
+changes connection state or moves the machine. Preserve deployed files before
+updates. Restarting the monitor or Pi still requires the operator's explicit
+confirmation of machine inactivity and readiness.
+
 ## Camera and sensor acceptance
 
 Keep the stock `camera_auto_detect=1` in `/boot/firmware/config.txt` for the

@@ -1,0 +1,16 @@
+[Unit]
+Description=Read-only TTC3018 diagnostics recorder
+After=ttc-monitor.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/github/ttc3018-bot
+ExecStart=%h/github/ttc3018-bot/.venv/bin/python -u %h/github/ttc3018-bot/scripts/record-cnc-diagnostics.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateDevices=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target
