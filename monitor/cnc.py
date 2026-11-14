@@ -15,6 +15,7 @@ from monitor.compensation import compensate_program, live_offset
 from monitor.feed import with_xy_feed
 from monitor.calibration import Calibration, with_cut_depth
 from monitor.profile_test import preview as profile_preview
+from monitor.project_cycle import ProjectCycle
 
 SERIAL_PATH = "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
 JOG_LIMITS_MM = {"X": 300, "Y": 180, "Z": 10}
@@ -92,8 +93,11 @@ class Controller:
         self.last_probe = self.probe
         self.probe_tested = False
         self.calibration = Calibration(profile_path)
+        self.project_cycle = ProjectCycle()
 
     def _close(self, error):
+        if self.project_cycle.active():
+            self.project_cycle.fail(error)
         self.calibration.cancel_cycle()
         self.project_datum = None
         self.calibration.invalidate("Połączenie CNC zostało przerwane.")
@@ -242,6 +246,7 @@ class Controller:
                 "state": self.report["state"] if fresh else None,
                 "position": self.report["position"] if fresh else None,
                 "project_datum": self.project_datum,
+                "project_cycle": self.project_cycle.status(),
                 "reason": self.error,
                 "age_seconds": age,
                 "info": self.info,
@@ -295,12 +300,19 @@ class Controller:
             self.probe.completed_job_id = None
             self.jobs.program["pcb_flow"] = operation
 
-    def action(self, action, payload):
+    def action(self, action, payload, *, project_cycle=False):
         """Exclude all other senders while a probe owns the serial stream."""
         with self.lock:
+            if action == "project_cycle_heartbeat":
+                return self.project_cycle.heartbeat(payload.get("lease"), self)
+            if action == "project_cycle_stop":
+                return self.project_cycle.stop(self)
+            if self.project_cycle.active() and self.project_cycle.record["phase"] != "loading" and not project_cycle and action not in ("job_pause", "job_resume", "job_stop", "probe_stop", "job_heartbeat"):
+                raise ValueError("Etap PCB jest aktywny. Użyj Pauzy lub Stop.")
             if action == "profile_test_heartbeat":
                 return self.calibration.heartbeat_cycle(payload.get("lease"))
             if action == "probe_stop":
+                self.project_cycle.stop(self)
                 self.calibration.cancel_cycle()
                 return self.last_probe.cancel()
             if action == "probe_heartbeat":
@@ -461,6 +473,7 @@ class Controller:
                   else self.jobs)
         if action in ("job_pause", "job_resume", "job_stop"):
             if action == "job_stop":
+                self.project_cycle.stop(self)
                 self.calibration.cancel_cycle()
             if action == "job_resume" and payload.get("confirmed") is not True:
                 raise ValueError("Wymagane potwierdzenie wznowienia.")
@@ -659,6 +672,7 @@ class Controller:
                     except Exception as error:
                         self._close(str(error))
                 self.calibration.tick_cycle(self)
+                self.project_cycle.tick(self)
         with self.lock:
             if self.last_probe.active():
                 self.last_probe.abort(

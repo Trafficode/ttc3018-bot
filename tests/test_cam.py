@@ -100,6 +100,26 @@ class GeometryTests(unittest.TestCase):
         self.directory = Path(self.temp.name)
         self.project = package(archive())["project"]
 
+    def test_informational_silkscreen_notices_allow_cam_but_other_findings_block(self):
+        from monitor.cam_geometry import read_archive
+        def revised(findings, issues=0, source_hash='a'*64):
+            result=io.BytesIO()
+            with zipfile.ZipFile(io.BytesIO(archive())) as original, zipfile.ZipFile(result,'w') as out:
+                for name in original.namelist():
+                    data=original.read(name)
+                    if name=='validation.json':data=json.dumps({'issues':issues,'findings':findings}).encode()
+                    if name=='copper-plan.json':data=json.dumps({'sourceHash':source_hash,'settings':{'layer':'B.Cu'}}).encode()
+                    out.writestr(name,data)
+            return result.getvalue()
+        notice={'type':'silk_overlap','severity':'warning','informational':True}
+        copper,stock=read_archive(revised([notice,{**notice,'type':'silk_over_copper'}]),self.project,self.directory)
+        self.assertFalse(copper.is_empty);self.assertEqual(stock.area,400)
+        for findings,issues in (([{**notice,'type':'clearance'}],0),([{**notice,'severity':'error'}],0),([{**notice,'informational':False}],0),([notice],1),([],False),(None,0)):
+            with self.subTest(findings=findings,issues=issues),self.assertRaises(ValueError):
+                read_archive(revised(findings,issues),self.project,self.directory)
+        with self.assertRaisesRegex(ValueError,'nie odpowiada'):
+            read_archive(revised([notice],source_hash='b'*64),self.project,self.directory)
+
     def test_real_gerber_generates_calibrated_linear_program(self):
         report, preview, content = generate(
             archive(), self.project, profile(), 3, self.directory)

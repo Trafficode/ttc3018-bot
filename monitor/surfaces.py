@@ -113,15 +113,16 @@ class SurfaceScan(ZProbe):
         })
         return result
 
-    def start(self, controller, payload):
+    def start(self, controller, payload, *, standalone_bounds=None, standalone_outline=False):
         program = controller.jobs.program
-        if program is None or payload.get("job_id") != controller.jobs.job_id:
+        if standalone_bounds is None and (program is None or payload.get("job_id") != controller.jobs.job_id):
             raise ValueError("Plik zmienił się; odśwież plan.")
-        area, points = plan_grid(program["bounds_mm"], payload)
-        outline = program.get("pcb_flow", {}).get("kind") == "outline"
+        bounds = standalone_bounds if standalone_bounds is not None else program["bounds_mm"]
+        area, points = plan_grid(bounds, payload)
+        outline = standalone_outline if standalone_bounds is not None else program.get("pcb_flow", {}).get("kind") == "outline"
         if outline != (payload.get("perimeterOnly") is True):
             raise ValueError("Dopasuj plan pomiaru do operacji obrysu.")
-        if outline and any(area[axis] != program["bounds_mm"][axis]
+        if outline and any(area[axis] != bounds[axis]
                            for axis in ("X", "Y")):
             raise ValueError("Punkty obrysu muszą leżeć na granicach "
                              "przebiegu frezu, bez rozszerzania mapy.")
@@ -145,7 +146,7 @@ class SurfaceScan(ZProbe):
         self.reference_xy = controller.report["position"][:2]
         self.expected_xy_offset = controller.offset[:2]
         self.map_id = secrets.token_hex(12)
-        self.job_id = controller.jobs.job_id
+        self.job_id = controller.jobs.job_id if standalone_bounds is None else None
         self.columns = payload["columns"]
         self.rows = payload["rows"]
         self.area, self.points = area, points

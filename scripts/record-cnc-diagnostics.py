@@ -32,7 +32,7 @@ def diagnostic_status(status):
         'cnc': {key: cnc[key] for key in (
             'connected', 'fresh', 'state', 'reason', 'position', 'info',
             'job', 'probe_triggered', 'probe_tested', 'probe_inverted',
-            'z_probe', 'surface_map', 'calibration') if key in cnc},
+            'z_probe', 'surface_map', 'calibration', 'project_cycle', 'project_datum') if key in cnc},
         'camera': {key: camera[key] for key in ('ok', 'error', 'reason')
                    if key in camera},
         'cam_preparing': status.get('cam_preparing'),

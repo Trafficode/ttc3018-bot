@@ -12,6 +12,8 @@ import math
 from pathlib import Path
 import secrets
 import threading
+import tempfile
+import time
 
 from monitor.cam import implementation_hashes, write_json
 from monitor.compensation import live_offset
@@ -32,6 +34,114 @@ class PcbProjects:
         self.library, self.cam = library, cam
         self.profiles, self.progress, self.cnc = profiles, progress, cnc
         self.lock = threading.RLock()
+        self.preview_lock = threading.Lock()
+        self.previews = {}
+
+    def preview(self, package_id):
+        """Source layout has no tool, thickness, CAM-job or CNC dependency."""
+        from monitor.cam_geometry import mechanical_preview
+        with self.preview_lock:
+            if package_id in self.previews:
+                return copy.deepcopy(self.previews[package_id])
+            package = self.library.get(package_id)
+            cad = [file for file in package["files"] if file["kind"] == "cad"]
+            if len(cad) != 1:
+                raise ValueError("Projekt musi zawierać jedną paczkę PCB.")
+            _, data = self.library.file(package_id, cad[0]["name"])
+            summary = bundle_summary(data, package["project"])
+            with tempfile.TemporaryDirectory() as directory:
+                report, geometry = mechanical_preview(data, package["project"], 3, Path(directory))
+            matrix = report["transform"]["matrix"]
+            geometry["holes"] = [{"point": [matrix[0]*h["x"]+matrix[4], matrix[3]*h["y"]+matrix[5]], "diameterMm": h["diameterMm"]} for h in summary.get("holes", [])]
+            if len(self.previews) >= 20:
+                self.previews.clear()
+            self.previews[package_id] = geometry
+            return copy.deepcopy(geometry)
+
+    def execute(self, payload, measure_only=False):
+        """Capture one explicit approval; CAM wait never grants fresh approval."""
+        with self.lock, self.cam.lock, self.cnc.lock:
+            run = self.read(payload.get("setupId"))
+            stage = payload.get("stage")
+            if stage not in KINDS or payload.get("confirmed") is not True or payload.get("fixed_probe") is not True:
+                raise ValueError("Potwierdź etap, narzędzie i stałe podłączenie sondy.")
+            status = self.cnc.status()
+            if not status.get("connected") or not status.get("fresh") or status.get("state") != "Idle" or status.get("job", {}).get("state") in ACTIVE or status.get("z_probe", {}).get("active") or status.get("calibration", {}).get("job", {}).get("state") in ACTIVE:
+                raise ValueError("Wykonanie etapu wymaga bezczynnej frezarki.")
+            datum = status.get("project_datum") or {}
+            if datum.get("setupId") != run["id"]:
+                raise ValueError("Ustaw zero X/Y projektu.")
+            position = payload.get("position")
+            if not isinstance(position, list) or len(position) != 3 or not status.get("position") or any(type(v) not in (int, float) or not math.isfinite(v) or abs(v-p) > .002 for v, p in zip(position, status["position"])):
+                raise ValueError("Pozycja zmieniła się. Potwierdź etap ponownie.")
+            if not status.get("probe_tested") or status.get("probe_triggered") is not False:
+                raise ValueError("Sprawdź styk sondy i rozewrzyj go przed startem.")
+            if not measure_only:
+                number(payload, "thicknessMm", .3, 3)
+            result = self.cnc.project_cycle.reserve(run["id"], stage, datum["id"], position, measure_only)
+            request = {**copy.deepcopy(payload), "packageId": run["packageId"]}
+            thread = threading.Thread(target=self._execute, args=(request, result["cycle"]["id"]), daemon=True)
+            thread.start()
+            return result
+
+    def _execute(self, payload, cycle_id):
+        """Acquire store→CAM→CNC locks; the serial worker never acquires stores."""
+        deadline = time.monotonic()+200
+        cycle = self.cnc.project_cycle
+        attempted = False
+        try:
+            while time.monotonic() < deadline:
+                with self.lock, self.cam.lock, self.cnc.lock:
+                    if not cycle.active() or cycle.record["id"] != cycle_id:
+                        return
+                    cycle.check_owner()
+                    status = self.cnc.status()
+                    datum = status.get("project_datum") or {}
+                    if datum.get("id") != cycle.record["datumId"] or not status.get("fresh") or status.get("state") != "Idle" or not status.get("position") or any(abs(a-b) > .002 for a, b in zip(status["position"], cycle.record["position"])):
+                        raise ValueError("Pozycja, połączenie lub zero X/Y zmieniły się przed wykonaniem.")
+                    run = self.read(payload["setupId"])
+                    stage = payload["stage"]
+                    if cycle.record["measureOnly"]:
+                        package = self.library.get(run["packageId"])
+                        cad = next(file for file in package["files"] if file["kind"] == "cad")
+                        _, data = self.library.file(package["id"], cad["name"])
+                        box = bundle_summary(data, package["project"]).get("boundsMm")
+                        if not box:
+                            raise ValueError("Brak obszaru pomiaru PCB.")
+                        margin = 0
+                        if stage == "outline":
+                            selected = self.profiles.get(payload.get("profileId"))
+                            if selected["fingerprint"] != payload.get("fingerprint"):
+                                raise ValueError("Profil narzędzia zmienił się. Sprawdź obszar pomiaru.")
+                            margin = selected["values"]["millDiameterMm"]/2
+                        bounds = {"X": [-margin, box[2]-box[0]+margin], "Y": [-margin, box[3]-box[1]+margin]}
+                        cycle.record["phase"] = "loading"
+                        cycle.begin_probe(self.cnc, payload, bounds)
+                        return
+                    current = self.state(run).get("stageStates", {}).get(stage, {})
+                    if current.get("done"):
+                        raise ValueError("Etap jest już wykonany. Wybierz następny etap.")
+                    if not current or current.get("stale") or current.get("state") in ("failed", "blocked", "interrupted") or current.get("profile", {}).get("fingerprint") != payload.get("fingerprint"):
+                        if attempted:
+                            raise ValueError(current.get("error") or "Etap nie przeszedł sprawdzenia geometrii.")
+                        if not self.cam.current:
+                            self.prepare(payload, cycle=True)
+                            attempted = True
+                    elif current.get("state") == "ready" and not self.cam.current:
+                        cycle.record["phase"] = "loading"
+                        self.load({**payload, "confirmedTool": True}, cycle=True)
+                        cycle.begin_probe(self.cnc, payload)
+                        return
+                    elif current.get("state") not in ("running", "ready"):
+                        raise ValueError(current.get("error") or "Nie udało się przygotować etapu.")
+                time.sleep(.2)
+            raise ValueError("Przekroczono czas przygotowania etapu.")
+        except Exception as error:
+            with self.cnc.lock:
+                if cycle.record and cycle.record["id"] == cycle_id and cycle.active():
+                    cycle.fail(error)
+                    if isinstance(error, RuntimeError):
+                        self.cnc._close(str(error))
 
     def filename(self, identity):
         """Never accept client paths or symlink records."""
@@ -138,10 +248,12 @@ class PcbProjects:
             write_json(self.filename(run["id"]), run)
             return self.state(run)
 
-    def prepare(self, payload):
+    def prepare(self, payload, *, cycle=False):
         """Compute stages without disconnecting an idle controller."""
         with self.lock, self.cam.lock, self.cnc.lock:
             status = self.cnc.status()
+            if getattr(self.cnc, "project_cycle", None) and self.cnc.project_cycle.active() and not cycle:
+                raise ValueError("Poczekaj na zakończenie aktywnego etapu.")
             if (status.get("connected") and (not status.get("fresh") or status.get("state") != "Idle")) or status.get("job", {}).get(
                 "state") in ACTIVE or status.get("z_probe", {}).get("active") or status.get("calibration", {}).get("job", {}).get("state") in ACTIVE:
                 raise ValueError("Przygotowanie projektu wymaga bezczynnej frezarki.")
@@ -232,9 +344,11 @@ class PcbProjects:
             self.cnc.project_datum = {"id": secrets.token_hex(16), "setupId": run["id"], "offset": offset}
             return self.state(run)
 
-    def load(self, payload):
+    def load(self, payload, *, cycle=False):
         """Explicit tool preparation binds all stage jobs to the same X/Y."""
         with self.lock, self.cam.lock, self.cnc.lock:
+            if getattr(self.cnc, "project_cycle", None) and self.cnc.project_cycle.active() and not cycle:
+                raise ValueError("Etap PCB jest aktywny.")
             run = self.read(payload.get("setupId"))
             kind = payload.get("stage")
             if kind not in run["stages"]:

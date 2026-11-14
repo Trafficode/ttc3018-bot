@@ -20,13 +20,14 @@ export function createController(fetcher = fetch, clock = globalThis) {
   const cnc = computed(() => data.value?.cnc || {});
   const job = computed(() => activeStates.includes(cnc.value.calibration?.job?.state) ? cnc.value.calibration.job : (cnc.value.job || {state: 'empty'}));
   const probing = computed(() => cnc.value.z_probe?.active === true);
-  const active = computed(() => activeStates.includes(job.value.state) || probing.value);
+  const active = computed(() => activeStates.includes(job.value.state) || probing.value || cnc.value.project_cycle?.active === true);
   const known = computed(() => !!data.value && !offline.value);
   const manualReady = computed(() => known.value && cnc.value.connected && cnc.value.fresh && cnc.value.state === 'Idle' && !active.value && !pending.value);
   const connectReady = computed(() => known.value && !active.value && !pending.value && (!cnc.value.connected || (cnc.value.fresh && cnc.value.state === 'Idle')));
   let lease = null;
   let probeLease = null;
   let cycleLease = null;
+  let projectCycleLease = null;
   let running = false;
   let pollTimer;
   let heartbeatTimer;
@@ -48,6 +49,8 @@ export function createController(fetcher = fetch, clock = globalThis) {
     if (offline.value) return {tone: attempted.value ? 'error' : 'info', text: attempted.value ? 'Brak odpowiedzi panelu. Stan CNC nieznany — sprawdź maszynę.' : 'Łączenie z panelem stanowiska…'};
     if (cnc.value.connected && !cnc.value.fresh) return {tone: 'error', text: 'Brak aktualnego odczytu CNC. Sprawdź maszynę; sterowanie jest zablokowane.'};
     if (cnc.value.state === 'Alarm') return {tone: 'error', text: 'Sterownik zgłasza alarm. Sprawdź maszynę i wrzeciono.'};
+    if (cnc.value.project_cycle?.active && cnc.value.project_cycle.phase==='preparing') return {tone:'info',text:cnc.value.project_cycle.measureOnly?'Przygotowanie pomiaru Z bez obróbki.':'Przygotowanie przejazdów. Po sprawdzeniu rozpocznie się pomiar Z i obróbka.'};
+    if (cnc.value.project_cycle?.phase==='failed' && cnc.value.project_cycle.error) return {tone:'error',text:cnc.value.project_cycle.error};
     if (probing.value) return {tone: 'warning', text: ['surface', 'calibration', 'profile_test'].includes(cnc.value.z_probe.kind) ? `Pomiar powierzchni: ${cnc.value.z_probe.completed} / ${cnc.value.z_probe.total} punktów. Pozostań przy stanowisku.` : 'Automatyczne zero Z: sondowanie aktywne. Pozostań przy stanowisku.'};
     if (job.value.state === 'failed') return {tone: 'error', text: job.value.error || 'Błąd programu. Sprawdź maszynę; nie ponawiaj poleceń w ciemno.'};
     if (actionError.value) return {tone: 'error', text: actionError.value, dismissible: true};
@@ -79,7 +82,8 @@ export function createController(fetcher = fetch, clock = globalThis) {
         offline.value = false;
         if (!next.cnc.z_probe?.active) probeLease = null;
         if (!next.cnc.calibration?.cycle?.active) cycleLease = null;
-        if (next.cnc.z_probe?.state === 'completed' && oldProbe && oldProbe !== 'completed' && next.cnc.connected && (next.cnc.z_probe.kind !== 'surface' || next.cnc.surface_map?.valid)) info(['surface', 'calibration', 'profile_test'].includes(next.cnc.z_probe.kind) ? next.cnc.calibration?.cycle?.active ? 'Pomiar Z zakończony. Cykl przechodzi do frezowania wzoru.' : 'Mapa Z gotowa. Sprawdź przewody przed startem.' : 'Zero Z ustawione sondą. Frez odsunięty 1 mm; zdejmij krokodylek przed włączeniem wrzeciona.');
+        if (!next.cnc.project_cycle?.active) projectCycleLease = null;
+        if (next.cnc.z_probe?.state === 'completed' && oldProbe && oldProbe !== 'completed' && next.cnc.connected && (next.cnc.z_probe.kind !== 'surface' || next.cnc.surface_map?.valid)) info(next.cnc.project_cycle?.active&&!next.cnc.project_cycle.measureOnly ? 'Pomiar Z zakończony. Cykl przechodzi do obróbki etapu.' : next.cnc.project_cycle?.measureOnly ? 'Pomiar Z zakończony bez obróbki.' : ['surface', 'calibration', 'profile_test'].includes(next.cnc.z_probe.kind) ? next.cnc.calibration?.cycle?.active ? 'Pomiar Z zakończony. Cykl przechodzi do frezowania wzoru.' : 'Mapa Z gotowa. Sprawdź przewody przed startem.' : 'Zero Z ustawione sondą. Frez odsunięty 1 mm. Sprawdź prześwit przewodu przy wrzecionie.');
         if (next.cnc.calibration?.job?.state === 'completed' && activeStates.includes(oldService)) info(next.cnc.calibration.mode==='profile_test' ? next.cnc.calibration.repeat?.passes>1 ? 'Przejazd wykańczający zakończony. Kolejna powtórka wymaga Twojego polecenia.' : 'Test zakończony. Możesz oczyścić PCB i ręcznie uruchomić przejazd wykańczający.' : 'Próba zakończona. Oceń miedź; kolejna iteracja użyje świeżego pola.');
         if (next.cnc.calibration?.job?.state === 'failed' && oldService !== 'failed') error(next.cnc.calibration.job.error || 'Próba przerwana. Sprawdź maszynę.');
         if (['failed', 'stopped'].includes(next.cnc.z_probe?.state) && oldProbe !== next.cnc.z_probe.state) error(probeFailureText(next.cnc.z_probe.error || 'Sondowanie przerwane. Sprawdź maszynę i zero.'));
@@ -95,6 +99,7 @@ export function createController(fetcher = fetch, clock = globalThis) {
   }
 
   async function send(payload, urgent = false) {
+    if (['job_stop','probe_stop'].includes(payload.action) && cnc.value.project_cycle?.active) payload={action:'project_cycle_stop'};
     if ((!urgent && pending.value) || !known.value || !data.value?.control_token) return false;
     const action = payload.action;
     const profileMutation = ['profile_create','profile_update','profile_select','profile_delete'].includes(action);
@@ -109,6 +114,7 @@ export function createController(fetcher = fetch, clock = globalThis) {
       if (result.lease) lease = result.lease;
       if (result.probe_lease) probeLease = result.probe_lease;
       if (result.cycle_lease) cycleLease = result.cycle_lease;
+      if (result.project_cycle_lease) projectCycleLease = result.project_cycle_lease;
       intentionalDisconnect = ['disconnect', 'job_stop'].includes(action);
       const messages = {connect: 'CNC połączone.', disconnect: 'CNC rozłączone przez operatora.', zero_xy: 'Zero X/Y ustawione.', zero_z: 'Zero Z ustawione.', job_load: 'Plik sprawdzony. Start wymaga potwierdzenia.', job_clear: 'Plik usunięty.', job_start: 'Uruchomienie programu zlecone.', job_pause: 'Pauza zlecona.', job_resume: 'Wznowienie zlecone.', job_stop: 'Przerwanie programu zlecone.', spindle_on: 'Polecenie włączenia wrzeciona przyjęte.', spindle_off: 'Polecenie wyłączenia wrzeciona przyjęte.'};
       if (messages[action]) info(messages[action]);
@@ -137,13 +143,16 @@ export function createController(fetcher = fetch, clock = globalThis) {
     }
     if (execute) {
       pending.value = payload.action;
-      try { await execute(); return true; }
+      try { const result=await execute(); if(result?.project_cycle_lease)projectCycleLease=result.project_cycle_lease; return true; }
       catch (cause) { error(cause.message); return false; }
       finally { pending.value = null; await refresh(true); }
     }
     return send(payload);
   }
   async function heartbeat() {
+    if (projectCycleLease && cnc.value.project_cycle?.active && data.value?.control_token) {
+      try { await fetcher('/api/cnc/action',{method:'POST',headers:{'Content-Type':'application/json','X-PiloMill-Token':data.value.control_token},body:JSON.stringify({action:'project_cycle_heartbeat',lease:projectCycleLease}),signal:AbortSignal.timeout(2000)}); } catch { /* Only the operator lease can continue a stage. */ }
+    }
     if (cycleLease && cnc.value.calibration?.cycle?.active && data.value?.control_token) {
       try { await fetcher('/api/cnc/action', {method:'POST',headers:{'Content-Type':'application/json','X-PiloMill-Token':data.value.control_token},body:JSON.stringify({action:'profile_test_heartbeat',lease:cycleLease}),signal:AbortSignal.timeout(2000)}); } catch { /* The owner expires the cycle; no observer may continue it. */ }
     }

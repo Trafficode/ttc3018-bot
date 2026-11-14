@@ -8,23 +8,35 @@ The operator sets measured laminate thickness once and uses the permanent
 Each stage is independent. A missing profile, absent THT holes or failed isolation
 does not block preparing another stage. Profiles are created in Profiles before
 starting the job; the Project view only selects a profile when several exist.
-Preparation runs automatically with CNC disconnected or connected with a fresh
-Idle report. It never opens USB, disconnects, moves axes or changes zero.
+The main **Wykonaj etap** action captures one operator confirmation for one tool.
+The server then prepares/validates CAM, probes Z and starts that tool's machining.
+Preparation allows CNC disconnected or connected with a fresh Idle report. It never opens USB, disconnects, moves axes or changes zero.
 Measured thickness remains editable with a freshly reported idle CNC connection.
 Editing is locked during jobs/probes, preparation, pending commands or unknown
 controller state. Entering a changed thickness clears the draft setup; the panel
 prepares replacement stages while Idle. It never
 disconnects the controller or changes a loaded machine program automatically.
 
-The three visible phases are preparation, Z measurement and machining. Mount the
-displayed tool, connect at the station, check the probe contact and request Z.
+The compact Project view shows the source layout and planned probe points as soon
+as a package is selected, independent of CAM, thickness and a loaded NC job.
+The material/XY toolbar, stage selector, preview and action panel fit a typical
+landscape workstation. Mount the displayed tool, connect at the station, verify
+the probe contact/release and press **Wykonaj etap**.
 The existing confirmation dialog remains mandatory. Isolation offers 3–11 points
 per axis (default 5×5, including rectangular grids), drilling uses a point, and
 outline measures the eight perimeter points on intact copper outside the board.
 The preview and confirmation use the selected grid. Changing its dimensions
 requires a new matching map before Start; spacing must be at least 0.01 mm.
-Start appears separately after measurement; nothing starts automatically.
-Each drilling diameter requires its own tool change and fresh Z measurement.
+The single dialog explicitly authorizes spindle startup after successful CAM and
+fresh Z. The permanently connected probe lead remains on the spindle housing.
+Every drilling diameter still requires a physical tool change and another explicit
+**Wykonaj etap** confirmation. Other stages never start automatically.
+
+**Tylko pomiar Z** references and measures the source board area without needing
+CAM or material thickness and never starts machining. Its diagnostic map has no
+production job identity; executing a stage always measures again against the exact
+validated program bounds. Outline measurement uses the selected mill-radius frame.
+**Ponów przygotowanie** is a small secondary recovery action after CAM failure.
 
 One setup binds the source package, measured thickness and live G54 X/Y offset.
 All stages must retain that X/Y datum. Position with Move, select the project,
@@ -52,6 +64,8 @@ Completion comes only from the exact sender job, never from a checkbox.
 
 Operator-only routes require `X-PiloMill-Token`; POST requires same-origin JSON:
 
+- `GET /api/pcb-projects/preview?packageId=<id>` returns cached source copper,
+  outline bounds and semantic holes without toolpath calculation or CNC access.
 - `GET /api/pcb-projects?packageId=<id>` returns recent setups in `runs`.
 - `POST /api/pcb-projects/setup`: `packageId`. Creates empty material metadata
   (`thicknessMm: null`, no stages) without any machine commands. Shared by zero
@@ -60,6 +74,12 @@ Operator-only routes require `X-PiloMill-Token`; POST requires same-origin JSON:
   `thicknessMm`, `profileId`, `fingerprint`, optional `confirmedThroughCut`.
 - `POST /api/pcb-projects/xy`: `setupId`, `mode: set|retain`, `position: [x,y,z]`,
   `confirmed: true`. The explicit zero button is the operator confirmation.
+- `POST /api/pcb-projects/execute`: setup/stage, thickness, selected profile
+  ID/fingerprint, current position, grid counts, `confirmed: true`,
+  `fixed_probe: true` and through-cut approval when applicable. Returns the private
+  `project_cycle_lease`. `/measure` uses the same boundary but never cuts.
+- CNC actions `project_cycle_heartbeat` and `project_cycle_stop` renew/cancel the
+  cycle. Global Stop cancels preparation too; it cannot accidentally start probing.
 - `POST /api/pcb-projects/load`: `setupId`, `stage`, `confirmedTool: true`, and
   fresh `confirmedThroughCut: true` for full-through outline profiles.
 
@@ -67,7 +87,13 @@ Setups live in the private application data `projects/` directory. Each stage
 references an immutable CAM attempt. Source/profile/implementation/artifact
 hashes remain checked before loading. The existing isolated CAM worker retains
 private devices/network and resource limits. Connect and preparation share locks.
-Loading never probes or starts a job; the existing sender owns those interlocks.
+Loading itself never probes or starts a job. The new ephemeral project cycle
+reserves the controller and owns the explicit preparation→probe→cut transition.
+Only its originating browser receives a private lease. Lost ownership, Stop,
+failed CAM/probing, stale position or changed datum/profile prevent progression.
+The serial worker handles probe→cut without acquiring store/CAM locks; a bounded
+background preparer uses store→CAM→CNC lock order and checks position/lease again.
+Cycles and leases are never restored or resumed after service restart.
 The library ingestion token cannot use these routes or control the machine.
 
 ## CAD import contract
@@ -78,7 +104,10 @@ has a file name and SHA-256. `tht-holes.json` has the same source hash and seman
 component-pad holes; vias and mechanical holes are excluded. Slots/unknown holes
 disable only drilling. All geometry uses one transform, including B.Cu mirroring.
 Path traversal, repeated ZIP members, oversized files, invalid coordinates and
-changed hashes are rejected. Legacy archives require re-export for THT drilling.
+changed hashes are rejected. Only warning-level `silk_overlap`, `silk_over_copper`
+and `silk_edge_clearance` entries explicitly marked `informational: true` may
+coexist with zero blocking issues. Copper/connectivity findings, errors, malformed
+validation and failed independent Gerber readback still block production. Legacy archives require re-export for THT drilling.
 
 Single-file NC import remains a separate entry from the project list. Existing
 manual control and saved profiles remain available. Manual Zero and contact-test

@@ -28,12 +28,16 @@ def pcb_project_request(handler):
         return True
     try:
         store = handler.server.pcb_projects
+        if handler.command == "GET" and url.path == "/api/pcb-projects/preview":
+            package = parse_qs(url.query).get("packageId", [None])[0]
+            respond(200, store.preview(package))
+            return True
         if handler.command == "GET" and url.path == "/api/pcb-projects":
             package = parse_qs(url.query).get("packageId", [None])[0]
             respond(200, {"runs": store.list(package)})
             return True
         if handler.command != "POST" or url.path not in (
-            "/api/pcb-projects/prepare", "/api/pcb-projects/load", "/api/pcb-projects/xy", "/api/pcb-projects/setup"
+            "/api/pcb-projects/prepare", "/api/pcb-projects/load", "/api/pcb-projects/xy", "/api/pcb-projects/setup", "/api/pcb-projects/execute", "/api/pcb-projects/measure"
         ):
             respond(404, {"error": "Nieznana operacja projektu PCB."})
             return True
@@ -48,7 +52,9 @@ def pcb_project_request(handler):
         payload = json.loads(handler.rfile.read(length))
         if not isinstance(payload, dict):
             raise ValueError("Wymagany obiekt JSON.")
-        if url.path.endswith("/setup"):
+        if url.path.endswith("/execute") or url.path.endswith("/measure"):
+            respond(202, store.execute(payload, url.path.endswith("/measure")))
+        elif url.path.endswith("/setup"):
             respond(200, store.create_setup(payload))
         elif url.path.endswith("/prepare"):
             respond(202, store.prepare(payload))

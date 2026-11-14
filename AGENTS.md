@@ -26,6 +26,12 @@ connected and idle. Do not require disconnect/reconnect, thickness, finished CAM
 a second confirmation dialog, or a retain-zero alternative in that project flow.
 Keep fresh position, Idle, G54, spindle-off and active-work interlocks.
 
+The Project view uses "Wykonaj etap" as the primary action: one explicit operator
+confirmation covers CAM preparation, fresh Z and machining for one mounted tool.
+Never advance automatically across drill diameters or stages. Show the source
+layout/probe plan independently of CAM; keep recovery actions secondary. A
+"Tylko pomiar Z" diagnostic measurement must never authorize machining.
+
 Use apply_patch for source edits. Keep documentation under docs/ in simple
 English. Validate shell syntax, Python compilation and relevant hardware tests.
 Do not describe a tested setup on one host as a validated fresh-image install.

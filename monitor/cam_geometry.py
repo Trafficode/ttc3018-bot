@@ -83,10 +83,18 @@ def read_archive(data, project, directory):
         plan = json.loads(archive.read("copper-plan.json"))
         validation = json.loads(archive.read("validation.json"))
         readback = json.loads(archive.read("copper-readback.json"))
+        findings = validation.get("findings")
+        informational = {"silk_overlap", "silk_over_copper", "silk_edge_clearance"}
         if plan.get("sourceHash") != project["boardHash"] or (
             plan.get("settings", {}).get("layer") != project["side"]
-        ) or validation.get("issues") != 0 or validation.get("findings"):
+        ):
             raise ValueError("Pakiet nie odpowiada sprawdzonemu PCB.")
+        if type(validation.get("issues")) is not int or validation["issues"] != 0 or not isinstance(findings, list) or any(
+            not isinstance(item, dict) or item.get("informational") is not True
+            or item.get("type") not in informational or item.get("severity") != "warning"
+            for item in findings
+        ):
+            raise ValueError("Pakiet zawiera błędy blokujące produkcję PCB.")
         if readback.get("findings") != []:
             raise ValueError("Pakiet nie przeszedł kontroli geometrii.")
         suffix = "-B_Cu.gbl" if project["side"] == "B.Cu" else "-F_Cu.gtl"

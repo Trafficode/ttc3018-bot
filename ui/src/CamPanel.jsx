@@ -15,23 +15,25 @@ export function CamPreparation({source, controller, api, onPrepared, locked,onOp
   </section>;
 }
 
-export function ToolpathPreview({geometry, findings=[], probePoints=[], showDatum=false}) {
+export function ToolpathPreview({geometry, findings=[], probePoints=[], showDatum=false, compactLabel}) {
   const canvas = useRef(null);
   useEffect(()=>{
     if (!geometry || !canvas.current) return;
     const target=canvas.current, context=target.getContext('2d');
     const [gx0,gy0,gx1,gy1]=geometry.bounds;
-    const [x0,y0,x1,y1]=showDatum?[Math.min(0,gx0),Math.min(0,gy0),gx1,gy1]:geometry.bounds;
+    const [x0,y0,x1,y1]=showDatum?[Math.min(0,gx0,...probePoints.map(p=>p.x)),Math.min(0,gy0,...probePoints.map(p=>p.y)),Math.max(gx1,...probePoints.map(p=>p.x)),Math.max(gy1,...probePoints.map(p=>p.y))]:geometry.bounds;
     const padding=18, scale=Math.min((target.width-padding*2)/(x1-x0),(target.height-padding*2)/(y1-y0));
-    const point=([x,y])=>[padding+(x-x0)*scale,target.height-padding-(y-y0)*scale];
+    const offsetX=(target.width-(x1-x0)*scale)/2,offsetY=(target.height-(y1-y0)*scale)/2;
+    const point=([x,y])=>[offsetX+(x-x0)*scale,target.height-offsetY-(y-y0)*scale];
     context.clearRect(0,0,target.width,target.height);
     function trace(path){path.forEach((value,index)=>{const [x,y]=point(value);if(index===0)context.moveTo(x,y);else context.lineTo(x,y);});}
+    if(showDatum){const [bx,by]=point([gx0,gy1]);context.strokeStyle='#c8c4ba';context.lineWidth=1;context.strokeRect(bx,by,(gx1-gx0)*scale,(gy1-gy0)*scale);}
     context.fillStyle='#b98b54';
     geometry.copper.forEach(rings=>{context.beginPath();rings.forEach(ring=>{trace(ring);context.closePath();});context.fill('evenodd');});
     context.strokeStyle='#087f8c';context.lineWidth=.8;
     geometry.paths.forEach(path=>{context.beginPath();trace(path);context.stroke();});
     (geometry.holes||[]).forEach(hole=>{const[x,y]=point(hole.point);context.beginPath();context.arc(x,y,hole.diameterMm*scale/2,0,Math.PI*2);context.stroke();});
-    probePoints.forEach(value=>{const[x,y]=point([value.x,value.y]);context.beginPath();context.arc(x,y,5,0,Math.PI*2);context.fillStyle='#fff';context.fill();context.strokeStyle='#28323c';context.stroke();});
+    probePoints.forEach(value=>{const[x,y]=point([value.x,value.y]);context.beginPath();context.arc(x,y,5,0,Math.PI*2);context.fillStyle=Number.isFinite(value.z)?'#287b5c':'#fff';context.fill();context.strokeStyle='#28323c';context.stroke();});
     if(showDatum){
       const [x,y]=point([0,0]);context.strokeStyle='#9b5600';context.lineWidth=2;
       context.beginPath();context.moveTo(x,y-12);context.lineTo(x,y);context.lineTo(x+12,y);context.stroke();
@@ -39,8 +41,8 @@ export function ToolpathPreview({geometry, findings=[], probePoints=[], showDatu
     }
     context.fillStyle='#bb2525';
     findings.forEach(item=>{const[x,y]=point([item.x,item.y]);context.beginPath();context.arc(x,y,4,0,Math.PI*2);context.fill();});
-  },[geometry,findings,probePoints,showDatum]);
-  return <figure class="cam-preview"><canvas ref={canvas} width="720" height="520" role="img" aria-label="Podgląd od strony frezowania. Miedź brązowa, środek ścieżki frezu niebieski, problemy czerwone."/><figcaption>Miedź · ścieżka frezu · {findings.length ? 'problemy zaznaczone na czerwono' : 'widok od strony obróbki'}<small>G54: lewy dolny narożnik · +X w prawo · +Y w górę</small></figcaption></figure>;
+  },[geometry,findings,probePoints,showDatum,compactLabel]);
+  return <figure class="cam-preview"><canvas ref={canvas} width="720" height={compactLabel?360:520} role="img" aria-label="Podgląd od strony frezowania. Miedź brązowa, środek ścieżki frezu niebieski, problemy czerwone."/><figcaption>{compactLabel||<>Miedź · ścieżka frezu · {findings.length ? 'problemy zaznaczone na czerwono' : 'widok od strony obróbki'}<small>G54: lewy dolny narożnik · +X w prawo · +Y w górę</small></>}</figcaption></figure>;
 }
 
 export function CamPrograms({controller, api, locked, initial, onLoaded, onSource}) {
