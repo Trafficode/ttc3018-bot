@@ -53,7 +53,7 @@ class PcbProgress:
                 "commands": job.get("total"),
                 "acknowledged": job.get("acknowledged"),
                 "mapId": status.get("surface_map", {}).get("id")})
-            progress["xyOffset"] = job.get("pcb_flow", {}).get("xyOffset")
+            progress["xyOffset"] = (job.get("pcb_flow") or {}).get("xyOffset")
             samples = status.get("surface_map", {}).get("samples", [])
             if samples:
                 heights = [sample["z"] for sample in samples]

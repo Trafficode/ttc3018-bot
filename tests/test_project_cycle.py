@@ -78,10 +78,19 @@ class ProjectCycleTests(unittest.TestCase):
         self.complete_probe();self.cnc.project_cycle.tick(self.cnc)
         self.assertEqual(self.cnc.project_cycle.record['phase'],'cutting')
         self.assertTrue(self.cnc.jobs.active());self.assertTrue(self.cnc.jobs.status()['compensated'])
+        source_flow=copy.deepcopy(self.cnc.jobs.program['pcb_flow'])
+        self.assertEqual(self.cnc.jobs.status()['pcb_flow'],source_flow)
+        self.assertIsNot(self.cnc.jobs.execution['pcb_flow'],self.cnc.jobs.program['pcb_flow'])
+        run=self.store.read(self.run['id'])
+        stage=self.store.state(run)['stageStates']['isolation']
+        self.assertTrue(stage['loaded']);self.assertTrue(stage['zReady'])
         job=self.cnc.jobs.job_id;self.cnc.project_cycle.tick(self.cnc)
         self.assertEqual(self.cnc.jobs.job_id,job)
         self.cnc.jobs.state='completed';self.cnc.project_cycle.tick(self.cnc)
         self.assertEqual(self.cnc.project_cycle.record['phase'],'completed')
+        stage=self.store.state(run)['stageStates']['isolation']
+        self.assertTrue(stage['done'])
+        self.assertFalse(stage['loaded'])
 
     def test_drilling_runs_only_one_diameter_and_requires_another_explicit_start(self):
         self.store.execute(self.request('drilling'));self.wait_phase('probing')

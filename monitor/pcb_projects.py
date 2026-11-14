@@ -214,7 +214,7 @@ class PcbProjects:
                         and loaded.get("index") == index
                         and not progress.get("requiresReload"))
                     stage["loaded"] = stage["loaded"] and result["xyReady"] and (
-                        status.get("job", {}).get("pcb_flow", {}).get("datumId") == datum.get("id"))
+                        (status.get("job", {}).get("pcb_flow") or {}).get("datumId") == datum.get("id"))
                     stage["zReady"] = stage["loaded"] and status.get(
                         "connected") and status.get("fresh") and (
                         self.cnc.probe.completed_job_id == self.cnc.jobs.job_id
@@ -396,7 +396,7 @@ class PcbProjects:
             loaded = progress.get("loaded") or {}
             if loaded.get("jobId") == status.get("job", {}).get("id") and (
                 loaded.get("index") == len(progress["completed"]) and
-                status.get("job", {}).get("pcb_flow", {}).get("datumId") == datum["id"] and
+                (status.get("job", {}).get("pcb_flow") or {}).get("datumId") == datum["id"] and
                 not progress.get("requiresReload") and
                 status.get("job", {}).get("state") not in (
                     "failed", "stopped", "completed")

@@ -13,6 +13,7 @@ import tempfile
 import threading
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -229,6 +230,46 @@ class PcbProjectTests(unittest.TestCase):
         self.assertEqual(self.cnc.loads, 1)
         self.assertTrue(all(action == "profile_select"
                             for action in self.cnc.actions))
+
+    def test_null_job_metadata_can_be_polled_and_explicitly_reloaded(self):
+        run = self.load("drilling", self.prepare("drilling"))
+        self.cnc.jobs.program["pcb_flow"] = None
+        for state in ("running", "stopped", "completed"):
+            self.cnc.job_state = state
+            result = self.store.list(self.package["id"])[0]
+            self.assertFalse(result["stageStates"]["drilling"]["loaded"])
+            self.assertFalse(result["stageStates"]["drilling"]["zReady"])
+        self.cnc.job_state = "stopped"
+        self.load("drilling", run)
+        self.assertEqual(self.cnc.loads, 2)
+
+    def test_unexpected_api_failure_returns_json_and_never_retries(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        server.control_token = "operator-fixture"
+        server.pcb_projects = self.store
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        base = f"http://127.0.0.1:{server.server_port}"
+        headers = {"X-PiloMill-Token": server.control_token,
+                   "Origin": base, "Content-Type": "application/json"}
+        for method, route, operation in (
+            ("GET", "/api/pcb-projects", "list"),
+            ("POST", "/api/pcb-projects/execute", "execute"),
+        ):
+            with patch.object(self.store, operation, side_effect=AttributeError(
+                "internal fixture detail")) as call, self.assertLogs(level="ERROR"):
+                with self.assertRaises(HTTPError) as caught:
+                    urlopen(Request(base + route, b"{}" if method == "POST"
+                        else None, headers, method=method))
+                with caught.exception as response:
+                    self.assertEqual(response.code, 500)
+                    self.assertEqual(response.headers.get_content_type(), "application/json")
+                    message = json.load(response)["error"]
+                    self.assertIn("stan stanowiska", message)
+                    self.assertNotIn("internal fixture detail", message)
+                self.assertEqual(call.call_count, 1)
+        self.assertEqual(self.cnc.actions, [])
 
     def test_next_diameter_requires_new_load_and_fresh_z(self):
         run = self.load("drilling", self.prepare("drilling"))

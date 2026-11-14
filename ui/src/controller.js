@@ -1,4 +1,5 @@
 import {signal, computed} from '@preact/signals';
+import {readApiJson} from './api-json.js';
 
 export function probeFailureText(message) {
   const raw=String(message||'');
@@ -117,8 +118,7 @@ export function createController(fetcher = fetch, clock = globalThis) {
     pending.value = action;
     try {
       const response = await fetcher('/api/cnc/action', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-PiloMill-Token': data.value.control_token}, body: JSON.stringify(payload), signal: AbortSignal.timeout(15000)});
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Błąd sterownika');
+      const result = await readApiJson(response, true);
       if (profileMutation) profileError.value = '';
       if (result.lease) lease = result.lease;
       if (result.probe_lease) probeLease = result.probe_lease;

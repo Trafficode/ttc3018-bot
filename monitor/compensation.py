@@ -5,6 +5,7 @@
 # ---------------------------------------------------------------------------
 """Build a separate validated execution stream; never mutate an upload."""
 
+import copy
 import math
 
 from monitor.jobs import WORD, parse_program
@@ -148,6 +149,9 @@ def compensate_program(program, surface, approach_mm=None):
         position = target
     result = parse_program(program["name"], "\n".join(lines))
     result["compensated"] = True
+    # Execution keeps the identity/approval of the validated source job.
+    if program.get("pcb_flow") is not None:
+        result["pcb_flow"] = copy.deepcopy(program["pcb_flow"])
     if approach_mm is not None:
         result["approach_mm"] = approach_mm
     if "tool_geometry" in program:

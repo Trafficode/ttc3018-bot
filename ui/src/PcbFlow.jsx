@@ -1,13 +1,14 @@
 import {useEffect, useState} from 'preact/hooks';
 import {IconCheck, IconTool, IconArrowRight} from '@tabler/icons-preact';
 import './pcb-flow.css';
+import {readApiJson} from './api-json.js';
 
 
 
 export async function flowApi(controller, url, options={}) {
   const response=await fetch(url,{...options,cache:'no-store',headers:{'X-PiloMill-Token':controller.data.value?.control_token || '',...(options.body ? {'Content-Type':'application/json'} : {})},signal:AbortSignal.timeout(15000)});
-  if(!response.ok){const value=await response.json();throw new Error(value.error || 'Zlecenie jest niedostępne.');}
-  return response;
+  const value=await readApiJson(response,(options.method || 'GET')!=='GET');
+  return {json:async()=>value};
 }
 
 export {FlowSetup} from './FlowSetup.jsx';

@@ -6,6 +6,7 @@
 """Ingestion credentials grant no access to project execution preparation."""
 
 import json
+import logging
 import secrets
 from urllib.parse import parse_qs, urlsplit
 
@@ -68,6 +69,11 @@ def pcb_project_request(handler):
         respond(409, {"error": str(error)})
     except OSError:
         respond(503, {"error": "Przygotowanie projektu jest niedostępne."})
+    except Exception:
+        logging.exception("PCB project request failed: %s %s",
+                          handler.command, url.path)
+        respond(500, {"error": "Błąd panelu podczas obsługi projektu. "
+                 "Odśwież stan stanowiska przed ponowieniem polecenia."})
     return True
 
 # ---------------------------------------------------------------------------
