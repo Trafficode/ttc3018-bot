@@ -5,6 +5,7 @@
 design-qa.md
 __pycache__/
 *.pyc
+*.kicad_prl
 *.pem
 *.key
 id_ed25519*

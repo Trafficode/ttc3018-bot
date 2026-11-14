@@ -1,0 +1,33 @@
+# Isolation contours only. No copper clearing, drilling or outline routing.
+# Provisional V-bit recipe: 30 degrees included angle, 0.1 mm flat tip.
+# Effective cutting diameter at Z=-0.05 mm: 0.126795 mm.
+# Do not add the 0.8 mm isolation-width from the older 10 mm coupon.
+front=../manufacturing/cnc-coupon-20mm-F_Cu.gtl
+front-output=isolation-raw.ngc
+output-dir=raw
+metric=true
+metricoutput=true
+zero-start=false
+x-offset=0
+y-offset=0
+nog64=true
+nog91-1=true
+nog81=true
+nom6=true
+al-front=false
+al-back=false
+mill-diameters=0.126795
+zwork=-0.05
+mill-infeed=0.05
+mill-feed=100
+mill-vertfeed=30
+# Controller S value, not a measured spindle RPM.
+mill-speed=1000
+zsafe=3
+zchange=3
+zchange-absolute=false
+spinup-time=2
+spindown-time=0
+tolerance=0.002
+optimise=0.002
+single-thread=true

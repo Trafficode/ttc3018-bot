@@ -1,0 +1,77 @@
+(footprint "Pair_W0.5_G0.5"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(property "Reference" "T1"
+		(at 0 0 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "8861adf0-9c6a-41a4-8677-67e0e35f55ee")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Value" "W0.5_G0.5"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "033b46d0-ed75-4806-8b74-3545a8d661cc")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "8cba791a-4c7b-4759-90c3-6686df9ad0c1")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "6e1fbf5c-c245-4d77-9ad8-2d60dbdbfbee")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr exclude_from_bom)
+	(duplicate_pad_numbers_are_jumpers no)
+	(pad "1" smd circle
+		(at 0 0)
+		(size 0.5 0.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "699a63f8-925f-47d5-a31c-9a61939947ac")
+	)
+	(pad "2" smd circle
+		(at 3.5 0)
+		(size 0.5 0.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "a56dc296-c693-4dc5-b0c8-3f10e35fa4e6")
+	)
+	(pad "3" smd circle
+		(at 0 1)
+		(size 0.5 0.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "45790a4a-82a2-48f7-b0eb-95761d82b547")
+	)
+	(pad "4" smd circle
+		(at 3.5 1)
+		(size 0.5 0.5)
+		(layers "F.Cu" "F.Mask")
+		(uuid "2f39d15c-dead-494a-80ee-2f9677594c92")
+	)
+	(embedded_fonts no)
+)
