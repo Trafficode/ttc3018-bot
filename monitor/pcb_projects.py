@@ -124,13 +124,27 @@ class PcbProjects:
             return sorted(result, key=lambda item: item["createdAt"],
                           reverse=True)[:20]
 
+    def create_setup(self, payload):
+        """Material metadata exists before thickness, CAM or any CNC action."""
+        with self.lock:
+            package = self.library.get(payload.get("packageId"))
+            if len([file for file in package["files"] if file["kind"] == "cad"]) != 1:
+                raise ValueError("Projekt musi zawierać jedną paczkę PCB.")
+            if len(list(self.root.glob("*.json"))) >= 200:
+                raise ValueError("Historia przygotowania PCB jest pełna.")
+            run = {"id": secrets.token_hex(32), "packageId": package["id"],
+                   "thicknessMm": None, "xyOffset": None,
+                   "createdAt": datetime.now(timezone.utc).isoformat(), "stages": {}}
+            write_json(self.filename(run["id"]), run)
+            return self.state(run)
+
     def prepare(self, payload):
-        """Prepare one stage offline; callers may queue stages independently."""
+        """Compute stages without disconnecting an idle controller."""
         with self.lock, self.cam.lock, self.cnc.lock:
             status = self.cnc.status()
-            if status.get("connected") or status.get("job", {}).get(
-                "state") in ACTIVE or status.get("z_probe", {}).get("active"):
-                raise ValueError("Rozłącz CNC przed przygotowaniem projektu.")
+            if (status.get("connected") and (not status.get("fresh") or status.get("state") != "Idle")) or status.get("job", {}).get(
+                "state") in ACTIVE or status.get("z_probe", {}).get("active") or status.get("calibration", {}).get("job", {}).get("state") in ACTIVE:
+                raise ValueError("Przygotowanie projektu wymaga bezczynnej frezarki.")
             kind = payload.get("stage")
             if kind not in KINDS:
                 raise ValueError("Wybierz etap projektu PCB.")
@@ -148,8 +162,9 @@ class PcbProjects:
             if payload.get("setupId"):
                 run = self.read(payload["setupId"])
                 if run["packageId"] != package["id"] or run[
-                    "thicknessMm"] != thickness:
+                    "thicknessMm"] not in (None, thickness):
                     raise ValueError("Ustawienie dotyczy innego projektu/PCB.")
+                run["thicknessMm"] = thickness
             else:
                 if len(list(self.root.glob("*.json"))) >= 200:
                     raise ValueError("Historia przygotowania PCB jest pełna.")

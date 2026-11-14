@@ -166,6 +166,49 @@ class PcbProjectTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.prepare("drilling", run, {"id": "missing", "fingerprint": "x"})
 
+    def test_zero_before_thickness_then_prepare_all_stages_without_disconnect(self):
+        self.cnc.connected = True
+        run = self.store.create_setup({"packageId": self.package["id"]})
+        self.assertIsNone(run["thicknessMm"])
+        self.assertEqual(self.cnc.actions, [])
+        run = self.store.set_xy({"setupId": run["id"], "mode": "set",
+            "confirmed": True, "position": self.cnc.position[:]})
+        self.assertTrue(run["xyReady"])
+        self.assertEqual(self.cnc.offset, [12, 18, 0])
+        datum = copy.deepcopy(self.cnc.project_datum)
+        for kind in ("isolation", "drilling", "outline"):
+            run = self.prepare(kind, run)
+            self.assertTrue(self.cnc.connected)
+            self.assertTrue(run["xyReady"])
+            self.assertEqual(run["thicknessMm"], 1.6)
+            self.assertEqual(self.cnc.project_datum, datum)
+        self.assertEqual(self.cnc.actions, ["zero_xy"])
+        self.assertEqual(self.cnc.loads, 0)
+
+    def test_connected_preparation_rejects_nonidle_active_or_unknown(self):
+        self.cnc.connected = True
+        for state in ("Run", "Jog", "Hold", "Alarm", None):
+            self.cnc.machine_state = state
+            with self.assertRaisesRegex(ValueError, "bezczynnej"):
+                self.prepare("drilling")
+        self.cnc.machine_state = "Idle"
+        for state in ACTIVE:
+            self.cnc.job_state = state
+            with self.assertRaises(ValueError):
+                self.prepare("drilling")
+        self.cnc.job_state = "empty"
+        self.cnc.probing = True
+        with self.assertRaises(ValueError):
+            self.prepare("drilling")
+        self.assertEqual(self.cnc.actions, [])
+
+    def test_preparing_first_does_not_set_or_move_xy(self):
+        self.cnc.connected = True
+        run = self.prepare("drilling")
+        self.assertFalse(run["xyReady"])
+        self.assertEqual(self.cnc.actions, [])
+        self.assertEqual(self.cnc.position, [12, 18, 1])
+
     def test_shared_xy_is_bound_on_load_and_changes_block_other_stage(self):
         run = self.prepare("drilling")
         run = self.prepare("outline", run)

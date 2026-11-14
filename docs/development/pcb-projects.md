@@ -8,11 +8,12 @@ The operator sets measured laminate thickness once and uses the permanent
 Each stage is independent. A missing profile, absent THT holes or failed isolation
 does not block preparing another stage. Profiles are created in Profiles before
 starting the job; the Project view only selects a profile when several exist.
-Preparation runs automatically with CNC disconnected and never opens USB.
+Preparation runs automatically with CNC disconnected or connected with a fresh
+Idle report. It never opens USB, disconnects, moves axes or changes zero.
 Measured thickness remains editable with a freshly reported idle CNC connection.
 Editing is locked during jobs/probes, preparation, pending commands or unknown
 controller state. Entering a changed thickness clears the draft setup; the panel
-asks the operator to disconnect before preparing replacement stages. It never
+prepares replacement stages while Idle. It never
 disconnects the controller or changes a loaded machine program automatically.
 
 The three visible phases are preparation, Z measurement and machining. Mount the
@@ -26,8 +27,12 @@ Start appears separately after measurement; nothing starts automatically.
 Each drilling diameter requires its own tool change and fresh Z measurement.
 
 One setup binds the source package, measured thickness and live G54 X/Y offset.
-All stages must retain that X/Y datum. After offline preparation, connect and
-position with Move, then explicitly confirm X/Y in the common material section.
+All stages must retain that X/Y datum. Position with Move, select the project,
+and press **Ustaw tutaj zero X/Y** in the common material section. This single
+explicit click writes the zero immediately; no extra dialog, navigation action
+or retain-existing-zero alternative is shown. No disconnect/reconnect is needed.
+XY can be set before thickness and before CAM has been computed. The first
+thickness assignment and all three stage calculations preserve that datum.
 Set XY writes only G10 L20 P1 X0 Y0; retain confirms the existing datum without
 changing coordinates. Both require fresh Idle, G54, M5, unchanged position and
 operator confirmation. Both invalidate Z and force reloading a prepared tool.
@@ -36,7 +41,8 @@ side (already mirrored for B.Cu), not the corner of a larger stock blank.
 A live in-memory datum identity gates project loading, probing and Start.
 Disconnect/restart/manual XY changes or observed XY-offset drift invalidate it;
 Z-only reference changes preserve XY. Changing thickness never moves or zeros
-axes; recalculate offline, then confirm the material setup again.
+axes; replacing an already prepared thickness creates a fresh setup and requires
+its XY confirmation. Entering the first thickness after zero preserves XY.
 Completed operations remain historical evidence for that setup; use a new setup
 for another stock blank rather than reusing completion from the previous board. A refreshed page restores the
 loaded project and stage. A service restart invalidates loaded/probe evidence.
@@ -47,10 +53,13 @@ Completion comes only from the exact sender job, never from a checkbox.
 Operator-only routes require `X-PiloMill-Token`; POST requires same-origin JSON:
 
 - `GET /api/pcb-projects?packageId=<id>` returns recent setups in `runs`.
+- `POST /api/pcb-projects/setup`: `packageId`. Creates empty material metadata
+  (`thicknessMm: null`, no stages) without any machine commands. Shared by zero
+  and CAM setup so simultaneous UI requests cannot create two active setups.
 - `POST /api/pcb-projects/prepare`: `packageId`, optional `setupId`, `stage`,
   `thicknessMm`, `profileId`, `fingerprint`, optional `confirmedThroughCut`.
 - `POST /api/pcb-projects/xy`: `setupId`, `mode: set|retain`, `position: [x,y,z]`,
-  `confirmed: true`. This route must only be called after operator confirmation.
+  `confirmed: true`. The explicit zero button is the operator confirmation.
 - `POST /api/pcb-projects/load`: `setupId`, `stage`, `confirmedTool: true`, and
   fresh `confirmedThroughCut: true` for full-through outline profiles.
 

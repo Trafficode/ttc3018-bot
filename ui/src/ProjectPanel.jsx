@@ -21,6 +21,8 @@ export function ProjectPanel({controller,ask,onManual,onPreparing,probeDistance,
   const stockDraftRef=useRef('');
   const [toolStore,setToolStore]=useState(null),[choices,setChoices]=useState({});
   const [run,setRun]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const [settingXY,setSettingXY]=useState(false);
+  const setupPromise=useRef(null);
   const [grid,setGrid]=useState({columns:5,rows:5});
   const [stageErrors,setStageErrors]=useState({}),[through,setThrough]=useState(false);
   const packageRef=useRef(''),runRef=useRef(null),preparing=useRef(false),epoch=useRef(0),restoreAllowed=useRef(false);
@@ -34,18 +36,32 @@ export function ProjectPanel({controller,ask,onManual,onPreparing,probeDistance,
   const profile=stage=>available(stage).find(value=>value.id===choices[stage]) || available(stage).find(value=>value.id===(stage==='isolation'?cnc.calibration_profiles?.selected?.id:toolStore?.activeByKind?.[stage])) || available(stage)[0];
   const readyStock=thickness!==''&&Number.isFinite(Number(thickness))&&Number(thickness)>=.3&&Number(thickness)<=3;
   const stage=run?.stageStates?.[kind];
-  const locked=controller.active.value||busy||!!controller.pending.value;
-  const stockLocked=!canEditStock({known:controller.known.value,active:controller.active.value,busy,pending:controller.pending.value,cnc});
+  const locked=controller.active.value||busy||settingXY||!!controller.pending.value;
+  const stockLocked=!canEditStock({known:controller.known.value,active:controller.active.value,busy:busy||settingXY,pending:controller.pending.value,cnc});
 
-  function confirmXY(mode){
-    if(!run?.id||!controller.manualReady.value||busy||!cnc.position?.every(Number.isFinite))return;
-    const setupId=run.id, position=[...cnc.position], version=epoch.current;
-    ask('project_xy',{mode,execute:async()=>{
-      if(version!==epoch.current||setupId!==runRef.current)throw new Error('Projekt zmienił się. Sprawdź przygotowanie ponownie.');
-      setBusy(true);
-      try{const value=await(await api('/api/pcb-projects/xy',{method:'POST',body:JSON.stringify({setupId,mode,position,confirmed:true})})).json();setRun(value);}
-      finally{setBusy(false);}
-    }});
+  async function ensureSetup(){
+    if(runRef.current)return runRef.current;
+    if(setupPromise.current)return setupPromise.current;
+    const version=epoch.current,packageId=packageRef.current;
+    const pending=(async()=>{
+      const value=await(await api('/api/pcb-projects/setup',{method:'POST',body:JSON.stringify({packageId})})).json();
+      if(version!==epoch.current)throw new Error('Projekt zmienił się. Wybierz go ponownie.');
+      runRef.current=value.id;restoreAllowed.current=false;setRun(value);return value.id;
+    })();
+    setupPromise.current=pending;
+    try{return await pending;}finally{if(setupPromise.current===pending)setupPromise.current=null;}
+  }
+  async function confirmXY(){
+    if(!controller.manualReady.value||settingXY||!cnc.position?.every(Number.isFinite))return;
+    const position=[...cnc.position],version=epoch.current;
+    setSettingXY(true);setError('');
+    try{
+      const setupId=await ensureSetup();
+      if(version!==epoch.current)throw new Error('Projekt zmienił się. Sprawdź przygotowanie ponownie.');
+      const value=await(await api('/api/pcb-projects/xy',{method:'POST',body:JSON.stringify({setupId,mode:'set',position,confirmed:true})})).json();
+      setRun(value);await controller.refresh(true);
+    }catch(cause){setError(cause.message);}
+    finally{setSettingXY(false);}
   }
   async function refreshSources(){
     try{const value=await (await api('/api/library')).json();setPackages(value.packages.filter(item=>!item.corrupt));setError('');
@@ -77,7 +93,7 @@ export function ProjectPanel({controller,ask,onManual,onPreparing,probeDistance,
     return()=>{alive=false;clearInterval(timer);};
   },[selected]);
   function chooseProject(id){
-    epoch.current++;packageRef.current=id;runRef.current=null;restoreAllowed.current=!!id;
+    epoch.current++;setupPromise.current=null;packageRef.current=id;runRef.current=null;restoreAllowed.current=!!id;
     setSelected(id);setThickness('');setRun(null);setChoices({});setThrough(false);setStageErrors({});setError('');
     stockDraftRef.current='';setStockDraft('');setStockEditing(true);
   }
@@ -85,7 +101,7 @@ export function ProjectPanel({controller,ask,onManual,onPreparing,probeDistance,
     const valid=value!==''&&Number.isFinite(Number(value))&&Number(value)>=.3&&Number(value)<=3;
     setStockEditing(!valid);
     if(value===thickness)return;
-    epoch.current++;runRef.current=null;restoreAllowed.current=false;setRun(null);setThickness(value);setThrough(false);setStageErrors({});setError('');
+    if(run?.thicknessMm!==null){epoch.current++;setupPromise.current=null;runRef.current=null;setRun(null);}restoreAllowed.current=false;setThickness(value);setThrough(false);setStageErrors({});setError('');
   }
   function draftStock(value){stockDraftRef.current=value;setStockDraft(value);if(document.activeElement?.tagName!=='INPUT')newStock(value);}
   function changeProfile(stage,id){setChoices({...choices,[stage]:id});setStageErrors({...stageErrors,[stage]:null});setThrough(false);}
@@ -95,8 +111,9 @@ export function ProjectPanel({controller,ask,onManual,onPreparing,probeDistance,
     preparing.current=true;setBusy(true);
     const version=epoch.current;
     try{
+      const setupId=await ensureSetup();
       const response=await api('/api/pcb-projects/prepare',{method:'POST',body:JSON.stringify({
-        packageId:source.id,setupId:runRef.current,stage:stageId,thicknessMm:Number(thickness),
+        packageId:source.id,setupId,stage:stageId,thicknessMm:Number(thickness),
         profileId:chosen.id,fingerprint:chosen.fingerprint,confirmedThroughCut:through})});
       const value=await response.json();
       if(version!==epoch.current)return;
@@ -107,7 +124,7 @@ export function ProjectPanel({controller,ask,onManual,onPreparing,probeDistance,
   // Preparing CAD never moves a machine. Queue ready stages one at a time;
   // a missing tool or failed stage does not prevent preparing the other stages.
   useEffect(()=>{
-    if(!source||!readyStock||cad.length!==1||!controller.known.value||cnc.connected||controller.data.value?.cam_preparing||busy||preparing.current)return;
+    if(!source||!readyStock||cad.length!==1||!controller.known.value||controller.active.value||!!controller.pending.value||(cnc.connected&&(!cnc.fresh||cnc.state!=='Idle'))||controller.data.value?.cam_preparing||busy||settingXY||preparing.current)return;
     const next=projectStages.find(({id})=>{
       const chosen=profile(id),current=run?.stageStates?.[id];
       if(!chosen||!capabilities[id]?.available||stageErrors[id])return false;
@@ -116,7 +133,7 @@ export function ProjectPanel({controller,ask,onManual,onPreparing,probeDistance,
       return !current || (!['running'].includes(current.state) && current.profile?.fingerprint!==chosen.fingerprint);
     });
     if(next)prepare(next.id);
-  },[selected,thickness,choices,toolStore,run,cnc.connected,controller.data.value?.cam_preparing,busy,through]);
+  },[selected,thickness,choices,toolStore,run,cnc.connected,cnc.fresh,cnc.state,controller.active.value,controller.pending.value,controller.data.value?.cam_preparing,busy,settingXY,through]);
   useEffect(()=>{onPreparing?.(busy||Object.values(run?.stageStates||{}).some(value=>value.state==='running'));},[busy,run]);
 
   if(!source){
@@ -136,18 +153,16 @@ export function ProjectPanel({controller,ask,onManual,onPreparing,probeDistance,
     <button type="button" class="text-button project-back" disabled={locked} onClick={()=>chooseProject('')}><IconChevronLeft size={16}/>Projekty</button>
     <div class="project-heading"><div><h2>{source.project.name}</h2><p>{source.project.side}{readyStock&&` · laminat ${Number(thickness).toLocaleString('pl-PL')} mm`} · wspólne zero X/Y</p></div>
       </div>
-    <details class="project-setup-disclosure" open={!run?.xyReady}><summary>Przygotowanie PCB <span>{readyStock?`${Number(thickness).toLocaleString('pl-PL')} mm · `:''}{run?.xyReady?'X/Y potwierdzone':'Ustaw materiał i zero X/Y'}</span></summary><section class="project-setup" aria-label="Wspólne przygotowanie PCB">
+    <details class="project-setup-disclosure" open={!run?.xyReady||!readyStock||stockEditing}><summary>Przygotowanie PCB <span>{readyStock?`${Number(thickness).toLocaleString('pl-PL')} mm · `:''}{run?.xyReady?'X/Y potwierdzone':'Ustaw materiał i zero X/Y'}</span></summary><section class="project-setup" aria-label="Wspólne przygotowanie PCB">
     <div class="setup-material"><h3>1. Materiał</h3><p class="project-hint">Wspólny dla wszystkich trzech etapów.</p>
     {(stockEditing||!readyStock)&&<div class="project-stock-editor" onFocusOut={event=>{if(!event.currentTarget.contains(event.relatedTarget))newStock(stockDraftRef.current);}}><PcbNumber name="thicknessMm" prefix="project-stock" value={stockDraft} onChange={draftStock} disabled={stockLocked}/></div>}
-    {readyStock&&cnc.connected&&!run&&<p class="project-hint" role="status">Grubość wpisana. Rozłącz CNC w panelu, aby przygotować etapy dla tego laminatu.</p>}
     {readyStock&&!stockEditing&&<p class="stock-value">{Number(thickness).toLocaleString('pl-PL')} <small>mm</small><button type="button" class="text-button" disabled={stockLocked} onClick={()=>setStockEditing(true)}>Zmień grubość</button></p>}
     </div><div class="setup-datum"><h3>2. Zero X/Y</h3>
       <p class={run?.xyReady?'project-success':'project-hint'} role="status">{run?.xyReady?'X/Y potwierdzone dla tego ustawienia':run?.xyOffset?'X/Y wymaga ponownego potwierdzenia':'X/Y nieustawione dla projektu'}</p>
       <p class="project-hint">Punkt 0,0: lewy dolny narożnik gotowej PCB, patrząc od strony frezowania ({source.project.side}).{source.project.side==='B.Cu'?' Widok dolnej strony jest już odbity.':''}</p>
-      <div class="setup-actions"><button type="button" disabled={locked} onClick={onMove}>Przejdź do Ruchu</button><button type="button" class={run?.xyReady?'':'primary'} disabled={!run?.id||!controller.manualReady.value||busy||controller.data.value?.cam_preparing} onClick={()=>confirmXY('set')}>{run?.xyReady?'Zmień zero X/Y':'Ustaw X/Y = 0 tutaj'}</button></div>
-      {run?.id&&!run.xyReady&&<button type="button" class="text-button retain-datum" disabled={!controller.manualReady.value||busy||controller.data.value?.cam_preparing} onClick={()=>confirmXY('retain')}>Potwierdź obecne zero bez zmiany</button>}
-      {!run?.id&&<p class="project-hint">Najpierw podaj grubość i przygotuj przejazdy przy rozłączonym CNC.</p>}
-      {run?.id&&!cnc.connected&&<button type="button" disabled={busy||controller.data.value?.cam_preparing||!controller.connectReady.value} onClick={()=>ask('connect')}>Połącz CNC, aby ustawić X/Y</button>}
+      <div class="setup-actions"><button type="button" class="primary" disabled={!controller.manualReady.value||settingXY} onClick={confirmXY}>{settingXY?'Zapisywanie X/Y…':'Ustaw tutaj zero X/Y'}</button></div>
+      <p class="project-hint">Zapisuje bieżące położenie jako X=0 i Y=0. Nie przesuwa osi.</p>
+      {!cnc.connected&&<p class="project-hint" role="status">Połącz CNC w górnym pasku, aby zapisać zero.</p>}
     </div></section></details>
     <nav class="project-stage-tabs" aria-label="Etapy PCB" role="tablist">{projectStages.map(({id,label,icon:Icon},index)=><button type="button" id={`stage-${id}`} role="tab" tabIndex={kind===id?0:-1} aria-selected={kind===id} aria-controls="project-stage-panel" disabled={controller.active.value&&kind!==id} onClick={()=>setKind(id)} onKeyDown={event=>{if(controller.active.value)return;const target=event.key==='Home'?0:event.key==='End'?2:event.key==='ArrowRight'?(index+1)%3:event.key==='ArrowLeft'?(index+2)%3:null;if(target!==null){event.preventDefault();setKind(projectStages[target].id);document.getElementById(`stage-${projectStages[target].id}`)?.focus();}}}><Icon size={20}/><strong>{label}</strong><small>{phaseText(run?.stageStates?.[id])}</small></button>)}</nav>
     <div id="project-stage-panel" role="tabpanel" aria-labelledby={`stage-${kind}`}>
@@ -160,8 +175,8 @@ export function ProjectPanel({controller,ask,onManual,onPreparing,probeDistance,
       {!readyStock&&<p class="project-message">Podaj zmierzoną grubość laminatu, aby przygotować etapy.</p>}
       {kind==='outline'&&chosen?.values?.retention==='through'&&<label class="cam-confirm"><input type="checkbox" checked={through} disabled={locked} onChange={event=>setThrough(event.currentTarget.checked)}/><span>Mocowanie utrzyma PCB po wycięciu na wylot bez mostków.</span></label>}
       {stageErrors[kind]&&<p role="alert">{stageErrors[kind]}</p>}
-      {!profileMatches&&<p class="project-message" role="status">{cnc.connected?'Rozłącz CNC, aby przygotować etap dla wybranego profilu.':'Przygotowanie etapu dla wybranego profilu…'}</p>}
-      {(stageErrors[kind]||stage?.stale||['failed','blocked'].includes(stage?.state))&&<button type="button" disabled={busy||cnc.connected} onClick={()=>prepare(kind,true)}>Przelicz etap</button>}
+      {!profileMatches&&<p class="project-message" role="status">Przygotowanie etapu dla wybranego profilu…</p>}
+      {(stageErrors[kind]||stage?.stale||['failed','blocked'].includes(stage?.state))&&<button type="button" disabled={locked} onClick={()=>prepare(kind,true)}>Przelicz etap</button>}
       {readyStock&&capability?.available&&!profileError&&!stageErrors[kind]&&profileMatches&&(kind!=='outline'||chosen?.values?.retention!=='through'||through)&&<ProjectOperation key={`${run?.id}-${kind}`} controller={controller} ask={ask} api={api} setupId={run?.id} stageId={kind} stage={stage} busy={busy} xyReady={!!run?.xyReady} grid={grid} onGrid={setGrid} onRun={setRun} probeDistance={probeDistance} probeFeed={probeFeed} through={through}/>
       }
       {error&&<p role="alert">{error}</p>}

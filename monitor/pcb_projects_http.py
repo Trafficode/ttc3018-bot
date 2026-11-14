@@ -33,7 +33,7 @@ def pcb_project_request(handler):
             respond(200, {"runs": store.list(package)})
             return True
         if handler.command != "POST" or url.path not in (
-            "/api/pcb-projects/prepare", "/api/pcb-projects/load", "/api/pcb-projects/xy"
+            "/api/pcb-projects/prepare", "/api/pcb-projects/load", "/api/pcb-projects/xy", "/api/pcb-projects/setup"
         ):
             respond(404, {"error": "Nieznana operacja projektu PCB."})
             return True
@@ -48,7 +48,9 @@ def pcb_project_request(handler):
         payload = json.loads(handler.rfile.read(length))
         if not isinstance(payload, dict):
             raise ValueError("Wymagany obiekt JSON.")
-        if url.path.endswith("/prepare"):
+        if url.path.endswith("/setup"):
+            respond(200, store.create_setup(payload))
+        elif url.path.endswith("/prepare"):
             respond(202, store.prepare(payload))
         elif url.path.endswith("/xy"):
             respond(200, store.set_xy(payload))
