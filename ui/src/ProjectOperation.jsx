@@ -12,7 +12,7 @@ export function ProjectOperation({controller,ask,api,setupId,stageId,stage,busy,
   const current=cycle?.setupId===setupId&&cycle?.stage===stageId?cycle:null;
   const running=current?.active;
   const loaded=stage?.loaded&&job.pcb_flow?.id===stage.camId;
-  const settingsMatch=stageId!=='isolation'||(stage?.isolationPasses||1)===isolationPasses;
+  const settingsMatch=!stage||stageId!=='isolation'||(stage.isolationPasses||1)===isolationPasses;
   const toolWidth=profile?.model&&Number.isFinite(profile.depth)?profile.model.intercept_mm+profile.model.slope*profile.depth:null;
   const nominalWidth=toolWidth*(isolationPasses===2?1.5:1);
   const visual=(settingsMatch?geometry:null)||sourceGeometry,box=visual?.bounds;
