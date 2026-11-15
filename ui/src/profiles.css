@@ -39,5 +39,10 @@
 #profile-content{display:flex;flex-direction:column;gap:12px}
 .profile-test-conditions{margin:0;font-size:11px;line-height:1.5;color:var(--muted)}
 .service-spindle>.parameter-field{grid-column:1/-1}
+.compact .profile-cutting-settings .profile-parameter-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;max-width:620px}
+.profile-cam-result{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:var(--selected);font-size:12px;line-height:1.5}
+.profile-cam-result strong{font-size:16px;color:var(--ink)}
+.profile-cam-result small{flex-basis:100%;color:var(--muted);font-size:11px}
+@media(max-width:540px){.compact .profile-cutting-settings .profile-parameter-grid{grid-template-columns:minmax(0,1fr)!important;max-width:none}}
 @media(max-width:450px){.profile-parameter-grid{gap:10px}.parameter-field{font-size:10px}.parameter-field small{font-size:9px}}
 @media(max-width:760px){.compact .station-notice{flex-wrap:wrap}.compact .station-notice .profile-bar{flex:1 0 100%;order:5}.profile-bar label{flex-shrink:0}.profile-bar>span{font-size:9px}.profile-trial{grid-template-columns:minmax(0,1fr) 90px}}

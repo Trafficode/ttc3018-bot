@@ -2,7 +2,7 @@ import {useLayoutEffect,useState} from 'preact/hooks';
 import {ParameterField} from './ParameterField.jsx';
 import {toolDiameter} from './service-geometry.js';
 import './profiles.css';
-import {FieldHelp,Disclosure} from './FieldHelp.jsx';
+import {FieldHelp} from './FieldHelp.jsx';
 import {AppSelect} from './AppSelect.jsx';
 
 const mm=v=>Number(v).toLocaleString('pl-PL',{maximumFractionDigits:4});
@@ -39,6 +39,8 @@ export function ProfileSettings({controller,cnc,ask}) {
   useLayoutEffect(()=>{setCreating(false);load(profile);},[profile.fingerprint]);
   const readonly=!creating&&profile.id==='default';
   const locked=!!controller.pending.value||controller.active.value;
+  const savedDepth=profile.depth??profile.observations?.[0]?.depth;
+  const savedCamWidth=!creating&&profile.model&&Number.isFinite(savedDepth)?profile.model.intercept_mm+profile.model.slope*savedDepth:null;
   function updateRow(index,key,value){setRows(rows.map((r,i)=>i===index?{...r,[key]:value}:r));setError('');}
   function diameter(row){return row.used_diameter??toolDiameter(Number(tool.tip),Number(tool.angle),Number(row.depth));}
   async function save(event) {
@@ -53,13 +55,13 @@ export function ProfileSettings({controller,cnc,ask}) {
     {readonly&&<p class="service-hint">Profil Domyślny ma stałe parametry. Wybierz zapisany profil z listy, aby go edytować, albo utwórz nowy.</p>}
     <form class="profile-form" noValidate onSubmit={save}><label class="parameter-field">Nazwa profilu<input id="profile-name" value={name} maxLength="40" disabled={readonly||locked} onInput={e=>setName(e.currentTarget.value)}/></label>
     <div class="profile-parameter-grid">{fields.filter(([key])=>!['plunge','power'].includes(key)).map(([key,label,options,min,max,step,help])=><ParameterField key={key} id={`profile-${key}`} label={label} value={tool[key]??''} options={options} min={min} max={max} step={step} help={help} disabled={readonly||locked} onChange={v=>{setTool({...tool,[key]:v});setError('');}} scale={key==='power'?.1:1} format={key==='power'?v=>`${v/10}%`:undefined}/>)}</div>
-    <Disclosure title="Zaawansowane · Ścieżki"><div class="profile-parameter-grid">{fields.filter(([key])=>['plunge','power'].includes(key)).map(([key,label,options,min,max,step,help])=><ParameterField key={key} id={`profile-${key}`} label={label} value={tool[key]??''} options={options} min={min} max={max} step={step} help={help} disabled={readonly||locked} onChange={v=>{setTool({...tool,[key]:v});setError('');}} scale={key==='power'?.1:1} format={key==='power'?v=>`${v/10}%`:undefined}/>)}</div></Disclosure>
+    <fieldset class="service-module profile-cutting-settings"><legend>Parametry frezowania</legend><div class="profile-parameter-grid">{fields.filter(([key])=>['plunge','power'].includes(key)).map(([key,label,options,min,max,step,help])=><ParameterField key={key} id={`profile-${key}`} label={label} value={tool[key]??''} options={options} min={min} max={max} step={step} help={help} disabled={readonly||locked} onChange={v=>{setTool({...tool,[key]:v});setError('');}} scale={key==='power'?.1:1} format={key==='power'?v=>`${v/10}%`:undefined}/>)}</div></fieldset>
     {!readonly&&<fieldset class="service-module"><legend>Pomiar kalibracyjny</legend><p class="service-hint">Wystarczy jeden pomiar z próbki wykonanej w Serwisie. Nominalny pasek to ustawiona wtedy szerokość; zmierzony pasek to szerokość pozostałej miedzi.</p>{rows.map((row,index)=><div class="profile-parameter-grid" key={index}>
       <ParameterField id={`profile-row-${index}-depth`} label="Zagłębienie próbki · mm" value={row.depth} options={fields[0][2]} min={.01} max={.3} step={.001} help="Głębokość użyta przy wykonywaniu mierzonej próbki." disabled={locked} onChange={v=>updateRow(index,'depth',v)}/>
       <ParameterField id={`profile-row-${index}-width`} label="Nominalny pasek · mm" value={row.width} options={[.2,.3,.5,.7,1,1.5,2]} min={.2} max={2} step={.01} help="Wartość szerokości ustawiona dla tej próbki w Serwisie." disabled={locked} onChange={v=>updateRow(index,'width',v)}/>
       <ParameterField id={`profile-row-${index}-measured_width`} label="Zmierzony pasek · mm" value={row.measured_width} options={[.2,.3,.5,.7,1,1.5,2]} min={.01} max={3} step={.01} help="Rzeczywista szerokość miedzi po frezowaniu. Przy kalibracji do 1 mm wybierz 1." disabled={locked} onChange={v=>updateRow(index,'measured_width',v)}/>
-      <div><ParameterField id={`profile-row-${index}-diameter`} label="Rowek użyty w programie · mm" value={row.used_diameter??(Number.isFinite(diameter(row))?Number(diameter(row).toFixed(6)):'')} options={[.1,.15,.2,.3,.4,.5,.6,.8,1]} min={.001} max={1.999} step={.0001} help="Średnica przyjęta przy generowaniu próbki. Dla Serwisu wynika z frezu i zagłębienia." disabled={locked} onChange={value=>updateRow(index,'used_diameter',value)}/><button class="text-button" type="button" disabled={locked} onClick={()=>updateRow(index,'used_diameter',null)}>Oblicz z frezu</button></div>
-    </div>)}</fieldset>}
+      <div><ParameterField id={`profile-row-${index}-diameter`} label="Rowek założony przy tworzeniu próbki · mm" value={row.used_diameter??(Number.isFinite(diameter(row))?Number(diameter(row).toFixed(6)):'')} options={[.1,.15,.2,.3,.4,.5,.6,.8,1]} min={.001} max={1.999} step={.0001} help="Historyczna szerokość rowka przyjęta przy generowaniu mierzonej próbki. To dane wejściowe kalibracji, a nie szerokość skrawania wyliczona dla zapisanego profilu." disabled={locked} onChange={value=>updateRow(index,'used_diameter',value)}/><button class="text-button" type="button" disabled={locked} onClick={()=>updateRow(index,'used_diameter',null)}>Oblicz z frezu</button></div>
+    </div>)}{Number.isFinite(savedCamWidth)&&savedCamWidth>0&&<output class="profile-cam-result" aria-label="Szerokość skrawania używana w CAM"><span>Szerokość skrawania używana w CAM:</span><strong>{savedCamWidth.toLocaleString('pl-PL',{minimumFractionDigits:3,maximumFractionDigits:3})} mm</strong><span>przy zagłębieniu {mm(savedDepth)} mm</span><small>Wynik kalibracji zapisanego profilu. Powyżej podano parametry historycznej próbki.</small></output>}</fieldset>}
     {error&&<p class="field-error" role="alert">{error}</p>}{saved&&<p class="profile-saved" role="status">{saved}</p>}
     {!readonly&&<div class="profile-toolbar"><button id="profile-save" class="primary" type="submit" disabled={locked}>{creating?'Utwórz i wybierz profil':'Zapisz zmiany'}</button><button type="button" disabled={locked} onClick={()=>{setCreating(false);load(profile);}}>Anuluj zmiany</button></div>}
     </form></section>;

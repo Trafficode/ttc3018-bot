@@ -95,6 +95,12 @@ preparation and manual Start remain separate operator actions.
 
 ## Verification
 
+The V-bit settings form exposes vertical entry and spindle level in an
+always-visible Cutting parameters fieldset. Calibration inputs identify the
+groove assumed for the historical specimen separately from a read-only result
+showing the saved profile's effective CAM width at its saved depth. This result
+does not preview unsaved draft changes or mutate the stored calibration.
+
 Tests use temporary stores, real source fixtures and mocked controllers.
 They cover legacy data, stale snapshots, independent values, hole grouping,
 cutter-radius offsets, full-through confirmation and actual worker output
