@@ -238,25 +238,15 @@ def trimmed_contour_paths(copper, diameter):
     return paths
 
 
-def overlapping_paths(paths, diameter):
-    """Two real cutter passes, separated by half a cutter width.
+def outward_isolation_paths(copper, diameter):
+    """Offset the second lane away from ALL original copper.
 
-    Input is the centre of a virtual 1.5-diameter band. The actual paths are
-    offset by +/- diameter/4. Verification always uses the real cutter.
+    The first lane is at d/2 + margin, the second at d + margin: a d/2
+    stepover. Unioning the expanded copper suppresses lanes where adjacent
+    lands leave insufficient room, including inside holes. Never move the
+    original lane or create an inward lane around a clipped medial line.
     """
-    network = unary_union([LineString(path) for path in paths])
-    # Buffer the whole network once. Its boundary joins parallel lanes around
-    # open ends and junctions instead of plunging into thousands of offset
-    # fragments. Closed contours keep an inner and an outer lane.
-    strip = network.buffer(diameter/4, quad_segs=32)
-    result = []
-    for region in polygons(strip):
-        for ring in [region.exterior, *region.interiors]:
-            coordinates = [[round(x, 5), round(y, 5)]
-                           for x, y in LineString(ring).simplify(.001).coords]
-            if len(set(map(tuple, coordinates))) > 1:
-                result.append(coordinates)
-    return result
+    return contour_paths(copper, 2 * diameter)
 
 
 def emit_program(paths, profile, clearance):
@@ -309,8 +299,7 @@ def emitted_paths(program):
     return unary_union(paths)
 
 
-def verify_sweep(copper, stock, program, diameter, *, allow_loss=False,
-                 centreline_allowance=0):
+def verify_sweep(copper, stock, program, diameter, *, allow_loss=False):
     """Reject copper loss, unreachable boundaries and remaining-stock shorts."""
     paths = emitted_paths(program)
     swept = paths.buffer(diameter / 2, quad_segs=32)
@@ -320,8 +309,7 @@ def verify_sweep(copper, stock, program, diameter, *, allow_loss=False,
     findings, notices = [], []
     # Pad trimming permits the cutter footprint to overlap copper from a
     # genuine gap. It never permits a centreline to drill across a copper land.
-    intrusion = paths.intersection(copper.buffer(
-        -(TOLERANCE + centreline_allowance)))
+    intrusion = paths.intersection(copper.buffer(-TOLERANCE))
     if intrusion.length > TOLERANCE:
         point = intrusion.representative_point()
         findings.append({"message": "Środek przejazdu przecina chronioną miedź.",
@@ -386,25 +374,41 @@ def generate(data, project, profile, clearance, directory, *, allow_pad_trim=Fal
     diameter, depth, conditions = tool_parameters(profile)
     passes = validate_isolation_passes(isolation_passes)
     band_width = diameter * (1.5 if passes == 2 else 1)
-    allowance = diameter/4 if passes == 2 else 0
     copper, stock = read_archive(data, project, directory)
     copper, stock, transform = transform_geometry(
         copper, stock, project["side"])
-    paths = contour_paths(copper, band_width)
-    if passes == 2:
-        paths = overlapping_paths(paths, diameter)
+    # Solve the normal single-pass operation first. Widening may not change
+    # that operation's cutter geometry, paths or accepted copper loss.
+    paths = contour_paths(copper, diameter)
     content, program = emit_program(paths, profile, clearance)
-    checks = verify_sweep(copper, stock, program, diameter,
-                          centreline_allowance=allowance)
+    checks = verify_sweep(copper, stock, program, diameter)
+    trimmed = False
+    if not checks["passed"] and allow_pad_trim:
+        paths = trimmed_contour_paths(copper, diameter)
+        content, program = emit_program(paths, profile, clearance)
+        checks = verify_sweep(copper, stock, program, diameter, allow_loss=True)
+        trimmed = True
+    additional = []
+    if passes == 2 and checks["passed"]:
+        first_swept = emitted_paths(program).buffer(diameter/2, quad_segs=32)
+        additional = [path for path in outward_isolation_paths(copper, diameter)
+                      if LineString(path).buffer(diameter/2, quad_segs=32)
+                      .difference(first_swept).area > .0001]
+        paths = paths + additional
+        content, program = emit_program(paths, profile, clearance)
+        checks = verify_sweep(copper, stock, program, diameter, allow_loss=trimmed)
+        swept = emitted_paths(program).buffer(diameter/2, quad_segs=32)
+        extra_loss = swept.intersection(copper.difference(first_swept))
+        checks["wideningCopperLossMm2"] = extra_loss.area
+        if extra_loss.area > .0001:
+            point = extra_loss.representative_point()
+            checks["findings"].append({
+                "message": "Dodatkowy przejazd narusza projektowaną miedź.",
+                "x": point.x, "y": point.y})
+            checks["passed"] = False
     review = None
     removed = GeometryCollection()
-    if not checks["passed"] and allow_pad_trim:
-        paths = trimmed_contour_paths(copper, band_width)
-        if passes == 2:
-            paths = overlapping_paths(paths, diameter)
-        content, program = emit_program(paths, profile, clearance)
-        checks = verify_sweep(copper, stock, program, diameter, allow_loss=True,
-                              centreline_allowance=allowance)
+    if allow_pad_trim:
         swept = emitted_paths(program).buffer(diameter/2, quad_segs=32)
         removed = copper.intersection(swept)
         if removed.area <= .0001:
@@ -435,7 +439,9 @@ def generate(data, project, profile, clearance, directory, *, allow_pad_trim=Fal
               "isolation": {"passes": passes, "overlapPercent": 50 if passes == 2 else 0,
                             "stepOverMm": diameter/2 if passes == 2 else 0,
                             "nominalWidthMm": band_width,
-                            "widthIsNominal": True},
+                            "widthIsNominal": True,
+                            "direction": "outward",
+                            "additionalContours": len(additional)},
               "clearanceMm": clearance, "conditions": conditions,
               "numerics": {"offsetMarginMm": MARGIN,
                            "voronoiUnionGridMm": NC_GRID,

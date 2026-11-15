@@ -205,7 +205,55 @@ class GeometryTests(unittest.TestCase):
         self.assertTrue(preview["removedCopper"])
         centre = emitted_paths(parse_program("two.nc", content))
         self.assertAlmostEqual(centre.distance(Point(15.95, 3)),
-                               .085, delta=.003)
+                               0, delta=.003)
+        self.assertAlmostEqual(report["checks"]["wideningCopperLossMm2"], 0)
+
+    def test_outward_widening_preserves_first_pass_and_copper_in_tight_gaps(self):
+        from monitor.cam_geometry import emitted_paths, read_archive
+        from monitor.jobs import parse_program
+        for gap in (.1, .4, .6, 2):
+            with self.subTest(gap=gap):
+                source = archive(gap)
+                first, _, nc1 = generate(source, self.project, profile(), 3,
+                    self.directory, allow_pad_trim=True)
+                report, _, nc2 = generate(source, self.project, profile(), 3,
+                    self.directory, allow_pad_trim=True, isolation_passes=2)
+                self.assertTrue(report["checks"]["passed"], report["checks"])
+                self.assertTrue(nc2.startswith(nc1.rsplit("M5\nM30", 1)[0]),
+                                "first-pass commands must remain unchanged")
+                copper, stock = read_archive(source, self.project, self.directory)
+                copper, _, _ = transform_geometry(copper, stock, "B.Cu")
+                sweep1 = emitted_paths(parse_program("one.nc", nc1)).buffer(
+                    .17, quad_segs=32)
+                sweep2 = emitted_paths(parse_program("two.nc", nc2)).buffer(
+                    .17, quad_segs=32)
+                self.assertLess(sweep1.difference(sweep2).area, .00001)
+                self.assertLess(sweep2.intersection(
+                    copper.difference(sweep1)).area, .0001)
+                self.assertAlmostEqual(first["checks"]["copperLossMm2"],
+                    report["checks"]["copperLossMm2"], delta=.0001)
+                self.assertEqual(report["isolation"]["direction"], "outward")
+
+    def test_second_pass_cannot_use_trim_consent_to_remove_more_copper(self):
+        with patch("monitor.cam_geometry.outward_isolation_paths",
+                   return_value=[[[16.5, 1.95], [17.5, 1.95]]]):
+            report, _, content = generate(archive(.1), self.project, profile(),
+                3, self.directory, allow_pad_trim=True, isolation_passes=2)
+        self.assertIsNone(content)
+        self.assertFalse(report["checks"]["passed"])
+        self.assertGreater(report["checks"]["wideningCopperLossMm2"], .01)
+        self.assertTrue(any("Dodatkowy przejazd" in f["message"]
+                            for f in report["checks"]["findings"]))
+
+    def test_outward_lane_respects_copper_holes_and_rotated_boundaries(self):
+        from monitor.cam_geometry import outward_isolation_paths, emitted_paths
+        from shapely import affinity
+        copper = box(2, 2, 12, 12).difference(box(5, 5, 9, 9))
+        copper = affinity.rotate(copper, 31, origin=(7, 7))
+        _, program = emit_program(outward_isolation_paths(copper, .34),
+                                  profile(), 3)
+        swept = emitted_paths(program).buffer(.17, quad_segs=32)
+        self.assertLess(swept.intersection(copper).area, .0001)
 
     def test_isolation_pass_count_is_bounded_without_changing_legacy_default(self):
         from monitor.isolation import validate_isolation_passes

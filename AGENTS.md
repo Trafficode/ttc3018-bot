@@ -38,6 +38,11 @@ Require explicit approval bound to the exact CAM and review IDs before loading
 or probing. Remaining shorts, erased islands and severed conductors still block.
 Never implement this by globally ignoring geometry checks or faking tool width.
 
+An additional isolation pass widens outward only. Preserve the validated
+single-pass paths and never increase their copper loss, even with pad-trim
+approval. Suppress extra lanes where adjacent copper leaves too little room.
+Never split a wider virtual medial contour into inward/outward cutter lanes.
+
 Project Z reference permits at most 10 mm travel; subsequent surface-grid
 descents remain capped at 1.4 mm. Project probes use G38.3: only a coherent
 PRB success=0, command acknowledgement and fresh Idle/unchanged WCO may end as a

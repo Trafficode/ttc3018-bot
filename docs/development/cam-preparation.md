@@ -69,20 +69,27 @@ paths rather than only changing the PCB gap setting.
 
 ## Worker boundary and storage
 
-Project isolation offers one pass or two overlapping lanes (default in the
-Project UI). Two-pass mode separates actual tool centrelines by half the
-calibrated cutter width. The nominal band is 1.5 times that width, at the same
-depth/feed/power. The generator routes a virtual band, then uses the boundary
-of a quarter-diameter buffer of the whole centreline network to produce the
-two real lanes, including continuous joins around open ends. All final NC
-sweeps use the real calibrated tool, never the virtual diameter.
+Project isolation offers one pass or outward widening (two passes where space
+permits, default in the Project UI). The first single-pass NC remains unchanged.
+The added lane is the boundary of the union of original copper expanded by one
+calibrated cutter diameter plus the numerical margin. Its distance from the
+normal first lane is half the cutter width. The maximum nominal band is 1.5
+times that width, with unchanged depth/feed/power. Holes and adjacent lands are
+handled by the same copper-union geometry, not by guessing path orientation.
+Extra lanes are suppressed in tight gaps and fully redundant loops are omitted.
 
-Tight gaps may remove copper; predicted loss requires the existing exact
-CAM/review acceptance. Erased islands, severed conductors and remaining shorts
-still block. Width is nominal: corners and local constraints follow the actual
-preview. Pass count is validated as integer 1 or 2, frozen in the worker request
-and returned with stage state. Changing it forces CAM preparation and a new
-review before probing. Old clients/archives without a setting retain one pass.
+The former virtual-band / symmetric-lane implementation could narrow traces
+when a medial contour was clipped in a tight gap. The 2026-11-15 correction
+removes that construction. An independent emitted-NC sweep check rejects ANY
+additional copper loss beyond the validated single-pass result, even when
+pad-trim consent exists. Width is an upper nominal value, not a promise to
+force a 0.514 mm gap between lands that are only 0.4 mm apart.
+
+The first pass may still need the existing narrow-gap pad-trim review. Erased
+islands, severed conductors and remaining shorts still block. Pass count is
+validated as integer 1 or 2 and frozen in the worker request. Old results are
+made stale by the implementation hash and must be regenerated; old clients
+without a pass setting retain one pass.
 
 ```mermaid
 flowchart LR
