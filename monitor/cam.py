@@ -20,6 +20,7 @@ import threading
 from monitor.jobs import parse_program
 from monitor.library import HASH, digest
 from monitor.profiles import check_cam_program, fingerprint
+from monitor.isolation import validate_isolation_passes
 
 ENGINE = "bark-planar-isolation/1;gerbonara/1.6.3;shapely/2.2.0"
 ROOT = Path(__file__).resolve().parent.parent
@@ -29,7 +30,8 @@ def implementation_hashes():
     """Pin every geometry, output-validator and tool-model implementation."""
     return {name: digest((ROOT / "monitor" / name).read_bytes())
             for name in ("cam_geometry.py", "cam_worker.py", "jobs.py",
-                         "profiles.py", "pcb_flow.py", "project_bundle.py")}
+                         "profiles.py", "pcb_flow.py", "project_bundle.py",
+                         "isolation.py")}
 
 
 def write_json(filename, value):
@@ -159,6 +161,9 @@ class CamCollection:
                    "project": package["project"],
                    "profile": copy.deepcopy(profile) if needs_isolation else {},
                    "clearanceMm": clearance, "engine": ENGINE}
+        if needs_isolation:
+            request["isolationPasses"] = validate_isolation_passes(
+                payload.get("isolationPasses", 1))
         if payload.get("allowPadTrim") is not None:
             if type(payload["allowPadTrim"]) is not bool or not needs_isolation:
                 raise ValueError("Zwężanie padów dotyczy tylko izolacji PCB.")

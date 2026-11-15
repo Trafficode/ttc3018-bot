@@ -69,6 +69,21 @@ paths rather than only changing the PCB gap setting.
 
 ## Worker boundary and storage
 
+Project isolation offers one pass or two overlapping lanes (default in the
+Project UI). Two-pass mode separates actual tool centrelines by half the
+calibrated cutter width. The nominal band is 1.5 times that width, at the same
+depth/feed/power. The generator routes a virtual band, then uses the boundary
+of a quarter-diameter buffer of the whole centreline network to produce the
+two real lanes, including continuous joins around open ends. All final NC
+sweeps use the real calibrated tool, never the virtual diameter.
+
+Tight gaps may remove copper; predicted loss requires the existing exact
+CAM/review acceptance. Erased islands, severed conductors and remaining shorts
+still block. Width is nominal: corners and local constraints follow the actual
+preview. Pass count is validated as integer 1 or 2, frozen in the worker request
+and returned with stage state. Changing it forces CAM preparation and a new
+review before probing. Old clients/archives without a setting retain one pass.
+
 ```mermaid
 flowchart LR
   Tractor --> Sources[Immutable source collection]

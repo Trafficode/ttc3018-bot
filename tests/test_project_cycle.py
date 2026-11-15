@@ -239,4 +239,25 @@ class ProjectCycleTests(unittest.TestCase):
         self.complete_probe();self.cnc.project_cycle.tick(self.cnc)
         self.assertEqual(self.cnc.project_cycle.record['phase'],'cutting')
 
+    def test_pass_mode_change_reprepares_and_invalidates_old_copper_acceptance(self):
+        original=self.fixture.cam.start
+        def with_review(*args):
+            item=original(*args)
+            self.fixture.cam.items[item['id']]['report']['padTrimReview']={
+                'id':'same-fixture-review','requiresAcceptance':True,
+                'removedAreaMm2':.12}
+            return item
+        self.fixture.cam.start=with_review
+        self.store.execute(self.request(isolationPasses=1));self.wait_phase('review')
+        first=next(iter(self.fixture.cam.items.values()))
+        accepted={'camId':first['id'],'reviewId':'same-fixture-review'}
+        self.store.execute(self.request(isolationPasses=2,
+                                       acceptedPadTrim=accepted))
+        self.wait_phase('review')
+        self.assertEqual(len(self.fixture.cam.items),2)
+        item=list(self.fixture.cam.items.values())[-1]
+        self.assertEqual(item['isolationPasses'],2)
+        self.assertEqual(self.cnc.port.writes,[])
+        self.assertIsNone(self.cnc.jobs.job_id)
+
 if __name__=='__main__':unittest.main()

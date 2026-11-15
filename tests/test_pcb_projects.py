@@ -104,6 +104,7 @@ class FakeCam:
         if kind == "drilling":
             sequence.append({**sequence[0], "file": "drill-01.nc"})
         item = {"id": identity, "state": "ready", "profile": selected,
+                "isolationPasses": payload.get("isolationPasses", 1),
                 "processProfile": snapshot, "workflow": payload["workflow"],
                 "implementationHashes": implementation_hashes(),
                 "report": {"sequence": sequence}}
@@ -166,6 +167,25 @@ class PcbProjectTests(unittest.TestCase):
         self.assertEqual(self.cnc.actions, [])
         with self.assertRaises(ValueError):
             self.prepare("drilling", run, {"id": "missing", "fingerprint": "x"})
+
+    def test_isolation_pass_mode_is_captured_and_mismatched_load_rejected(self):
+        selected = profile()
+        payload = {"packageId": self.package["id"], "stage": "isolation",
+            "thicknessMm": 1.6, "profileId": selected["id"],
+            "fingerprint": selected["fingerprint"], "isolationPasses": 2}
+        run = self.store.prepare(payload)
+        self.assertEqual(run["stageStates"]["isolation"]["isolationPasses"], 2)
+        self.assertEqual(self.cam.get(run["stages"]["isolation"])[
+            "isolationPasses"], 2)
+        self.cnc.connected = True
+        with self.assertRaisesRegex(ValueError, "Szerokość izolacji"):
+            self.store.load({"setupId": run["id"], "stage": "isolation",
+                "confirmedTool": True, "isolationPasses": 1})
+        self.assertEqual(self.cnc.loads, 0)
+        self.assertEqual(self.cnc.actions, [])
+        for invalid in (True, 0, 3, "2"):
+            with self.assertRaisesRegex(ValueError, "przejazdy"):
+                self.store.prepare({**payload, "isolationPasses": invalid})
 
     def test_zero_before_thickness_then_prepare_all_stages_without_disconnect(self):
         self.cnc.connected = True

@@ -22,6 +22,7 @@ from shapely.ops import linemerge, polygonize, unary_union
 
 from monitor.jobs import WORD, parse_program
 from monitor.profiles import check_cam_program, validate_depth
+from monitor.isolation import validate_isolation_passes
 
 ENGINE = "bark-planar-isolation/1;gerbonara/1.6.3;shapely/2.2.0"
 MARGIN = .008
@@ -237,6 +238,27 @@ def trimmed_contour_paths(copper, diameter):
     return paths
 
 
+def overlapping_paths(paths, diameter):
+    """Two real cutter passes, separated by half a cutter width.
+
+    Input is the centre of a virtual 1.5-diameter band. The actual paths are
+    offset by +/- diameter/4. Verification always uses the real cutter.
+    """
+    network = unary_union([LineString(path) for path in paths])
+    # Buffer the whole network once. Its boundary joins parallel lanes around
+    # open ends and junctions instead of plunging into thousands of offset
+    # fragments. Closed contours keep an inner and an outer lane.
+    strip = network.buffer(diameter/4, quad_segs=32)
+    result = []
+    for region in polygons(strip):
+        for ring in [region.exterior, *region.interiors]:
+            coordinates = [[round(x, 5), round(y, 5)]
+                           for x, y in LineString(ring).simplify(.001).coords]
+            if len(set(map(tuple, coordinates))) > 1:
+                result.append(coordinates)
+    return result
+
+
 def emit_program(paths, profile, clearance):
     """Emit one linear GRBL operation, with no inherited modal state."""
     diameter, depth, conditions = tool_parameters(profile)
@@ -287,7 +309,8 @@ def emitted_paths(program):
     return unary_union(paths)
 
 
-def verify_sweep(copper, stock, program, diameter, *, allow_loss=False):
+def verify_sweep(copper, stock, program, diameter, *, allow_loss=False,
+                 centreline_allowance=0):
     """Reject copper loss, unreachable boundaries and remaining-stock shorts."""
     paths = emitted_paths(program)
     swept = paths.buffer(diameter / 2, quad_segs=32)
@@ -297,7 +320,8 @@ def verify_sweep(copper, stock, program, diameter, *, allow_loss=False):
     findings, notices = [], []
     # Pad trimming permits the cutter footprint to overlap copper from a
     # genuine gap. It never permits a centreline to drill across a copper land.
-    intrusion = paths.intersection(copper.buffer(-TOLERANCE))
+    intrusion = paths.intersection(copper.buffer(
+        -(TOLERANCE + centreline_allowance)))
     if intrusion.length > TOLERANCE:
         point = intrusion.representative_point()
         findings.append({"message": "Środek przejazdu przecina chronioną miedź.",
@@ -356,21 +380,31 @@ def mechanical_preview(data, project, clearance, directory):
     return report, preview
 
 
-def generate(data, project, profile, clearance, directory, *, allow_pad_trim=False):
+def generate(data, project, profile, clearance, directory, *, allow_pad_trim=False,
+             isolation_passes=1):
     """Return evidence and NC only if every planar and format gate passes."""
     diameter, depth, conditions = tool_parameters(profile)
+    passes = validate_isolation_passes(isolation_passes)
+    band_width = diameter * (1.5 if passes == 2 else 1)
+    allowance = diameter/4 if passes == 2 else 0
     copper, stock = read_archive(data, project, directory)
     copper, stock, transform = transform_geometry(
         copper, stock, project["side"])
-    paths = contour_paths(copper, diameter)
+    paths = contour_paths(copper, band_width)
+    if passes == 2:
+        paths = overlapping_paths(paths, diameter)
     content, program = emit_program(paths, profile, clearance)
-    checks = verify_sweep(copper, stock, program, diameter)
+    checks = verify_sweep(copper, stock, program, diameter,
+                          centreline_allowance=allowance)
     review = None
     removed = GeometryCollection()
     if not checks["passed"] and allow_pad_trim:
-        paths = trimmed_contour_paths(copper, diameter)
+        paths = trimmed_contour_paths(copper, band_width)
+        if passes == 2:
+            paths = overlapping_paths(paths, diameter)
         content, program = emit_program(paths, profile, clearance)
-        checks = verify_sweep(copper, stock, program, diameter, allow_loss=True)
+        checks = verify_sweep(copper, stock, program, diameter, allow_loss=True,
+                              centreline_allowance=allowance)
         swept = emitted_paths(program).buffer(diameter/2, quad_segs=32)
         removed = copper.intersection(swept)
         if removed.area <= .0001:
@@ -398,6 +432,10 @@ def generate(data, project, profile, clearance, directory, *, allow_pad_trim=Fal
                "padTrimReviewId": review["id"] if review else None}
     report = {"engine": ENGINE, "transform": transform,
               "diameterMm": diameter, "depthMm": depth,
+              "isolation": {"passes": passes, "overlapPercent": 50 if passes == 2 else 0,
+                            "stepOverMm": diameter/2 if passes == 2 else 0,
+                            "nominalWidthMm": band_width,
+                            "widthIsNominal": True},
               "clearanceMm": clearance, "conditions": conditions,
               "numerics": {"offsetMarginMm": MARGIN,
                            "voronoiUnionGridMm": NC_GRID,

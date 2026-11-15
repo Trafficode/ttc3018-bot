@@ -42,7 +42,8 @@ def main():
             report, preview, content = generate(
                 source, request["project"], request["profile"],
                 request["clearanceMm"], directory,
-                allow_pad_trim=request.get("allowPadTrim") is True)
+                allow_pad_trim=request.get("allowPadTrim") is True,
+                isolation_passes=request.get("isolationPasses", 1))
             ready = content is not None
         else:
             report, preview = mechanical_preview(

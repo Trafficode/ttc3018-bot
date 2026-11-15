@@ -19,6 +19,7 @@ from monitor.cam import implementation_hashes, write_json
 from monitor.compensation import live_offset
 from monitor.library import HASH
 from monitor.pcb_flow import number
+from monitor.isolation import validate_isolation_passes
 from monitor.pcb_progress import require_pad_trim_acceptance
 from monitor.project_bundle import bundle_summary
 
@@ -79,6 +80,8 @@ class PcbProjects:
                 raise ValueError("Sprawdź styk sondy i rozewrzyj go przed startem.")
             if not measure_only:
                 number(payload, "thicknessMm", .3, 3)
+                if stage == "isolation":
+                    validate_isolation_passes(payload.get("isolationPasses", 1))
             result = self.cnc.project_cycle.reserve(run["id"], stage, datum["id"], position, measure_only)
             request = {**copy.deepcopy(payload), "packageId": run["packageId"]}
             thread = threading.Thread(target=self._execute, args=(request, result["cycle"]["id"]), daemon=True)
@@ -120,9 +123,11 @@ class PcbProjects:
                         cycle.begin_probe(self.cnc, payload, bounds)
                         return
                     current = self.state(run).get("stageStates", {}).get(stage, {})
-                    if current.get("done"):
+                    passes_changed = stage == "isolation" and current.get(
+                        "isolationPasses", 1) != payload.get("isolationPasses", 1)
+                    if current.get("done") and not passes_changed:
                         raise ValueError("Etap jest już wykonany. Wybierz następny etap.")
-                    if not current or current.get("stale") or current.get("state") in ("failed", "blocked", "interrupted") or current.get("profile", {}).get("fingerprint") != payload.get("fingerprint"):
+                    if not current or passes_changed or current.get("stale") or current.get("state") in ("failed", "blocked", "interrupted") or current.get("profile", {}).get("fingerprint") != payload.get("fingerprint"):
                         if attempted:
                             findings = current.get("report", {}).get("checks", {}).get("findings", [])
                             raise ValueError(current.get("error") or (findings[0]["message"] if findings else "Etap nie przeszedł sprawdzenia geometrii."))
@@ -186,6 +191,8 @@ class PcbProjects:
                 stage = {"camId": identity, "state": item["state"],
                          "error": item.get("error"),
                          "report": item.get("report", {})}
+                if kind == "isolation":
+                    stage["isolationPasses"] = item.get("isolationPasses", 1)
                 stage["profile"] = item.get("profile") if kind == (
                     "isolation") else item.get("processProfile", {}).get(
                         "profiles", {}).get(kind)
@@ -298,6 +305,8 @@ class PcbProjects:
                            payload.get("fingerprint")}
             if kind == "isolation":
                 request["allowPadTrim"] = True
+                request["isolationPasses"] = validate_isolation_passes(
+                    payload.get("isolationPasses", 1))
             selection = {} if kind == "isolation" else {kind: {
                 "id": payload.get("profileId"),
                 "fingerprint": payload.get("fingerprint")}}
@@ -372,6 +381,9 @@ class PcbProjects:
             ):
                 raise ValueError("Przygotowanie narzędzia wymaga stanu Idle.")
             item = self.cam.get(run["stages"][kind])
+            if kind == "isolation" and payload.get("isolationPasses",
+                item.get("isolationPasses", 1)) != item.get("isolationPasses", 1):
+                raise ValueError("Szerokość izolacji zmieniła się. Przygotuj CAM ponownie.")
             require_pad_trim_acceptance(item, payload)
             # Capture completion of the previous tool before replacing its
             # sender job, even if the operator switches faster than polling.

@@ -172,6 +172,48 @@ class GeometryTests(unittest.TestCase):
             self.directory, allow_pad_trim=True)
         self.assertNotEqual(other["padTrimReview"]["id"], review["id"])
 
+    def test_two_pass_band_uses_real_tool_and_half_width_stepover(self):
+        from monitor.cam_geometry import emitted_paths
+        from monitor.jobs import parse_program
+        from shapely.geometry import LineString
+        report, preview, content = generate(archive(), self.project,
+            profile(), 3, self.directory, isolation_passes=2)
+        self.assertTrue(report["checks"]["passed"], report["checks"])
+        self.assertAlmostEqual(report["diameterMm"], .34)
+        self.assertAlmostEqual(report["isolation"]["stepOverMm"], .17)
+        self.assertAlmostEqual(report["isolation"]["nominalWidthMm"], .51)
+        centre = emitted_paths(parse_program("two.nc", content))
+        # Mirrored first land is X=16..18, Y=2..4. Cross its lower band.
+        section = centre.buffer(.17, quad_segs=32).intersection(
+            LineString([(17, 0), (17, 1.999)]))
+        self.assertAlmostEqual(section.length, .51, delta=.004)
+        hits = centre.intersection(LineString([(17, 0), (17, 1.999)]))
+        self.assertEqual(len(hits.geoms), 2)
+        self.assertAlmostEqual(abs(hits.geoms[0].y-hits.geoms[1].y),
+                               .17, delta=.002)
+        self.assertEqual(preview["removedCopper"], [])
+
+    def test_two_pass_tight_gap_keeps_loss_review_and_nc_validation(self):
+        from monitor.jobs import parse_program
+        from monitor.cam_geometry import emitted_paths
+        from shapely.geometry import Point
+        report, preview, content = generate(archive(.1), self.project,
+            profile(), 3, self.directory, isolation_passes=2,
+            allow_pad_trim=True)
+        self.assertTrue(report["checks"]["passed"], report["checks"])
+        self.assertTrue(report["padTrimReview"]["requiresAcceptance"])
+        self.assertTrue(preview["removedCopper"])
+        centre = emitted_paths(parse_program("two.nc", content))
+        self.assertAlmostEqual(centre.distance(Point(15.95, 3)),
+                               .085, delta=.003)
+
+    def test_isolation_pass_count_is_bounded_without_changing_legacy_default(self):
+        from monitor.isolation import validate_isolation_passes
+        for value in (None, True, False, 0, 3, 2.0, "2", []):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_isolation_passes(value)
+        self.assertEqual(validate_isolation_passes(), 1)
+
     def test_wide_gaps_keep_original_paths_without_a_trim_consent(self):
         regular, old_preview, old = generate(archive(), self.project,
             profile(), 3, self.directory)
@@ -293,6 +335,14 @@ class CollectionTests(unittest.TestCase):
             self.assertEqual(item["profile"], profile())
             with self.assertRaises(RuntimeError):
                 self.cam.start(self.payload, profile())
+
+    def test_two_pass_mode_is_frozen_in_worker_request(self):
+        with patch("monitor.cam.threading.Thread"):
+            item = self.cam.start({**self.payload, "isolationPasses": 2}, profile())
+        self.assertEqual(item["isolationPasses"], 2)
+        request = json.loads((self.cam.directory(item["id"]) /
+                              "request.json").read_text())
+        self.assertEqual(request["isolationPasses"], 2)
 
     def test_profile_and_datum_confirmation_required(self):
         for field, value in (("profileFingerprint", "wrong"),
