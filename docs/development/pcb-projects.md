@@ -182,3 +182,10 @@ and a preview next to the operation controls; mobile stacks the same controls.
 
 Validation covers offline geometry/CAM, sender doubles and intercepted browser
 actions. It does not replace an operator's physical tool, fixture and probe check.
+
+Measured project-map points show signed Z offsets in millimetres relative to
+the initial reference touch, not relative to the first grid sample. Values
+appear as samples arrive and remain available after completion. Unknown points
+stay blank. Readback is bound to the project cycle, sender job and grid;
+retained invalid-map readings are marked historical. Dense maps scroll locally
+to keep labels readable, and a collapsed list exposes numeric readings.

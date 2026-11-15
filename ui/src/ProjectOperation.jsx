@@ -4,6 +4,7 @@ import {AppSelect} from './AppSelect.jsx';
 import {ToolpathPreview} from './CamPanel.jsx';
 import {createSurfacePlan,defaultSurfaceSettings} from './surface-plan.js';
 import {projectReadiness,firstProbePlan,projectProbeFailure} from './project-readiness.js';
+import {projectProbeReadings} from './probe-readings.js';
 
 const titles={isolation:'Ścieżki',drilling:'Otwory THT',outline:'Obrys'};
 export function ProjectOperation({controller,ask,api,setupId,stageId,stage,busy,xyReady,grid,onGrid,probeDistance,probeFeed,through,sourceGeometry,sourceError,profile,thickness,capability,profileError,prepare,onProfile,profiles=[],onMove,isolationPasses=2,onIsolationPasses}){
@@ -20,8 +21,7 @@ export function ProjectOperation({controller,ask,api,setupId,stageId,stage,busy,
   const sourceBounds=box?{X:[box[0]-margin,box[2]+margin],Y:[box[1]-margin,box[3]+margin]}:null;
   const bounds=loaded?job.bounds_mm:stage?.operation?.boundsMm||stage?.report?.boundsMm||sourceBounds;
   const plan=bounds&&stageId!=='drilling'?createSurfacePlan(bounds,{...defaultSurfaceSettings(bounds),...(stageId==='isolation'?grid:{}),perimeterOnly:stageId==='outline'}):null;
-  const samples=cnc.surface_map?.samples||[];
-  const points=stageId==='drilling'?(Array.isArray(cnc.position)?[{x:cnc.position[0],y:cnc.position[1]}]:[]):(plan?.points||[]).map(p=>({...p,z:running||current?.phase==='measured'?samples.find(s=>Math.abs(s.x-p.x)<.001&&Math.abs(s.y-p.y)<.001)?.z:undefined}));
+  const points=stageId==='drilling'?(Array.isArray(cnc.position)?[{x:cnc.position[0],y:cnc.position[1]}]:[]):projectProbeReadings(plan?.points||[],cnc,setupId,stageId);
   useEffect(()=>{let alive=true;setGeometry(null);if(stage?.camId&&['ready','blocked'].includes(stage.state))api(`/api/cam/preview/${stage.camId}`).then(r=>r.json()).then(v=>{if(alive)setGeometry(v);}).catch(()=>{});return()=>{alive=false;};},[stage?.camId,stage?.state]);
   const readyStock=Number.isFinite(Number(thickness))&&Number(thickness)>=.3&&Number(thickness)<=3;
   const firstProbe=firstProbePlan(cnc,stageId,10,probeFeed);
@@ -46,7 +46,7 @@ export function ProjectOperation({controller,ask,api,setupId,stageId,stage,busy,
   const text={preparing:'Przygotowanie przejazdów',loading:'Przygotowanie narzędzia',probing:cnc.z_probe?.attempt?.phase==='reference'?(stageId==='drilling'?'Szukanie zera Z':'Szukanie powierzchni Z przed mapą'):`Pomiar Z · ${cnc.z_probe?.completed||0}/${cnc.z_probe?.total||1}`,cutting:job.state==='paused'?'Obróbka wstrzymana':'Trwa obróbka',completed:'Etap wykonany',measured:'Pomiar Z zakończony · bez obróbki',ready:reviewKey&&!reviewAccepted?'Sprawdź zwężenie padów':blocked?'Geometria zablokowana':canExecute?'Gotowe do uruchomienia':'Przygotowanie stanowiska'}[phase]||'Etap zatrzymany';
   return <section class="project-operation stage-workspace" aria-label="Przygotowanie i wykonanie etapu">
     <div class="operation-layout"><div class="operation-visual">
-      {visual?<ToolpathPreview geometry={visual} probePoints={points} findings={stage?.report?.checks?.findings||[]} showDatum compactLabel={`${titles[stageId]} · ${box[2]-box[0]} × ${box[3]-box[1]} mm · ${stageId==='drilling'?'punkt Z przy narzędziu':`${points.length} punktów Z`}${geometry&&settingsMatch?' · przejazdy CAM':' · layout PCB'}`}/>:<p class="preview-placeholder">{sourceError||'Wczytywanie layoutu PCB…'}</p>}
+      {visual?<ToolpathPreview geometry={visual} probePoints={points} findings={stage?.report?.checks?.findings||[]} showDatum probeReadingsHistorical={!cnc.surface_map?.valid&&!cnc.surface_map?.active} compactLabel={`${titles[stageId]} · ${box[2]-box[0]} × ${box[3]-box[1]} mm · ${stageId==='drilling'?'punkt Z przy narzędziu':`${points.length} punktów Z`}${geometry&&settingsMatch?' · przejazdy CAM':' · layout PCB'}`}/>:<p class="preview-placeholder">{sourceError||'Wczytywanie layoutu PCB…'}</p>}
     {probeFailure&&<details class="probe-recovery" open><summary>Poprzedni pomiar Z: brak styku{probeFailure.code==='ALARM:5'?' (ALARM:5)':''}</summary><p>{probeFailure.reference?'Przerwano pomiar odniesienia Z. Frezowanie nie rozpoczęło się.':'Przerwano pomiar siatki. Mapa Z nie jest ważna.'}</p>{probeFailure.attempt&&<p class="probe-travel">Tamta próba: X={probeFailure.attempt.start[0].toFixed(3)}, Y={probeFailure.attempt.start[1].toFixed(3)} · Z {probeFailure.attempt.start[2].toFixed(3)} → {probeFailure.attempt.targetZ.toFixed(3)} mm · maks. {probeFailure.attempt.distanceMm.toFixed(2)} mm.</p>}<p>Ustaw frez nad ciągłą miedzią, blisko powierzchni, i sprawdź obwód sondy. Odległość od miedzi musi być mniejsza niż dozwolony zjazd. Odczyt Z sam nie mierzy tej odległości.</p>{onMove&&<button type="button" class="text-button" disabled={controller.active.value||!!controller.pending.value} onClick={onMove}>Ustaw wysokość w Ruchu</button>}</details>}
     </div><div class="operation-controls">
       <div class="stage-tool-heading"><h3>{titles[stageId]}</h3><span class="stage-status" role="status">{text}</span></div>
