@@ -181,6 +181,53 @@ class GeometryTests(unittest.TestCase):
         self.assertIsNone(candidate["padTrimReview"])
         self.assertEqual(preview["removedCopper"], [])
 
+    def test_trim_candidate_heals_internal_cell_seams_before_offsetting(self):
+        from monitor.cam_geometry import trimmed_contour_paths, emitted_paths
+        from shapely import affinity
+        # This ordinary wide gap reproduced internal pad slits when some
+        # other part of a PCB selected the global pad-trimming fallback.
+        copper = box(2, 2, 4, 4).union(box(4.8, 2, 6.8, 4))
+        for angle in (0, 17, 45, 89):
+            with self.subTest(angle=angle):
+                shape = affinity.rotate(copper, angle, origin=(4, 3))
+                paths = trimmed_contour_paths(shape, .34)
+                _, program = emit_program(paths, profile(), 3)
+                centre = emitted_paths(program)
+                self.assertLess(centre.intersection(
+                    shape.buffer(-.001)).length, .001)
+                self.assertLess(centre.buffer(.17, quad_segs=32).intersection(
+                    shape).area, .0001)
+                checks = verify_sweep(shape, box(-10, -10, 20, 20),
+                                      program, .34, allow_loss=True)
+                self.assertTrue(checks["passed"], checks)
+
+    def test_trim_permission_does_not_allow_a_spur_into_a_wide_pad(self):
+        copper = box(2, 2, 4, 4).union(box(7, 2, 9, 4))
+        paths = contour_paths(copper, .34)
+        paths.append([[1.8, 3], [2.3, 3]])
+        _, program = emit_program(paths, profile(), 3)
+        checks = verify_sweep(copper, box(0, 0, 20, 20), program, .34,
+                              allow_loss=True)
+        self.assertFalse(checks["passed"])
+        self.assertTrue(any("Środek przejazdu" in item["message"]
+                            for item in checks["findings"]))
+
+    def test_trim_keeps_nested_pad_territories_and_is_deterministic(self):
+        from monitor.cam_geometry import trimmed_contour_paths, emitted_paths
+        from shapely.geometry import Point
+        frame = box(1, 1, 15, 15).difference(box(4, 4, 12, 12))
+        copper = frame.union(box(5, 5, 7, 7)).union(box(7.1, 5, 9.1, 7))
+        paths = trimmed_contour_paths(copper, .34)
+        self.assertEqual(paths, trimmed_contour_paths(copper, .34))
+        _, program = emit_program(paths, profile(), 3)
+        centre = emitted_paths(program)
+        self.assertLess(centre.distance(Point(7.05, 6)), .003)
+        checks = verify_sweep(copper, box(0, 0, 16, 16), program, .34,
+                              allow_loss=True)
+        self.assertTrue(checks["passed"], checks)
+        self.assertEqual(checks["protectedIslands"], 3)
+        self.assertGreater(checks["copperLossMm2"], .01)
+
     def test_trim_permission_still_rejects_severed_or_erased_conductors(self):
         from monitor.cam_geometry import verify_sweep
         copper = box(2, 2, 4, 4).union(box(7, 2, 9, 4))

@@ -49,6 +49,24 @@ registration, spindle speed, cleaning and electrical isolation need operator
 acceptance. The selected single-observation width model is not a full process
 qualification. Isolation-only output proves neither holes nor board cut-through.
 
+## Pad-corner seam correction (2026-11-15)
+
+The pad-trimming fallback previously turned numerical gaps and missing
+Voronoi cell fragments into real plunges at pad corners. It now uses a fixed,
+deterministic 0.00001 mm site perturbation, closes cell seams on that NC grid
+and removes only territory holes that contain no other copper owner.
+Real nested pads keep their own territories. An independent emitted-NC check
+rejects cutter centrelines crossing copper even when footprint overlap has
+been approved. Genuine narrow-gap footprint loss still requires exact CAM
+review approval; the calibrated tool width/depth and Z mapping are unchanged.
+
+Regenerate CAM after updating the worker: the implementation hash invalidates
+older results. Offline regressions cover rotated rectangular lands, nested
+pads, a valid narrow gap and an invalid pad spur. A new physical cut remains
+an operator acceptance step. The contour generator does not promise complete
+clearing of a wider gap; wider isolation bands need overlapping area-clearing
+paths rather than only changing the PCB gap setting.
+
 ## Worker boundary and storage
 
 ```mermaid

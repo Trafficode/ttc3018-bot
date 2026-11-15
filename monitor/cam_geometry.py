@@ -9,6 +9,7 @@ import io
 import hashlib
 import json
 import math
+import random
 from pathlib import Path
 import warnings
 import zipfile
@@ -25,6 +26,7 @@ from monitor.profiles import check_cam_program, validate_depth
 ENGINE = "bark-planar-isolation/1;gerbonara/1.6.3;shapely/2.2.0"
 MARGIN = .008
 TOLERANCE = .005
+NC_GRID = .00001
 
 
 def polygons(shape):
@@ -191,7 +193,13 @@ def trimmed_contour_paths(copper, diameter):
                 sites[point] = owner
         if len(sites) > 30000:
             raise ValueError("Zbyt złożony layout do zwężania padów.")
-    cells = list(voronoi_polygons(MultiPoint(list(sites)), ordered=True).geoms)
+    # Break exact collinear/cocircular degeneracies deterministically. GEOS
+    # can otherwise omit cell fragments for regular rows of boundary sites.
+    # The perturbation is only one NC grid unit, far below MARGIN/TOLERANCE.
+    jitter = random.Random(0)
+    points = [(x + jitter.uniform(-NC_GRID, NC_GRID),
+               y + jitter.uniform(-NC_GRID, NC_GRID)) for x, y in sites]
+    cells = list(voronoi_polygons(MultiPoint(points), ordered=True).geoms)
     if len(cells) != len(sites):
         raise ValueError("Nie udało się wyznaczyć środka ciasnych szczelin.")
     groups = [[] for _ in targets]
@@ -199,7 +207,20 @@ def trimmed_contour_paths(copper, diameter):
         groups[owner].append(set_precision(make_valid(cell), .0000001))
     boundaries = []
     for target, group in zip(targets, groups):
-        territory = unary_union(group)
+        # Overlay rounding can leave nanometre-wide cracks between cells of
+        # the SAME owner. Their boundaries become real cutter plunges into
+        # pads. Collapse these seams on the NC coordinate grid before taking
+        # a boundary; the grid is far below the geometric tolerance.
+        territory = unary_union(group).buffer(NC_GRID).buffer(-NC_GRID)
+        territory = set_precision(territory, NC_GRID)
+        # Voronoi overlay can also leave bounded voids with no generating
+        # site. A real hole in an owner's territory must enclose copper of
+        # another owner (e.g. a pad inside a ground pour). Preserve those.
+        other = copper.difference(target)
+        territory = unary_union([
+            Polygon(region.exterior, [ring.coords for ring in region.interiors
+                    if Polygon(ring).intersects(other)])
+            for region in polygons(territory)])
         expanded = target.buffer(diameter/2 + MARGIN, quad_segs=32)
         boundaries.append(expanded.intersection(territory).boundary)
     network = unary_union(boundaries)
@@ -274,6 +295,13 @@ def verify_sweep(copper, stock, program, diameter, *, allow_loss=False):
     inaccessible = copper.boundary.difference(
         swept.buffer(TOLERANCE + MARGIN))
     findings, notices = [], []
+    # Pad trimming permits the cutter footprint to overlap copper from a
+    # genuine gap. It never permits a centreline to drill across a copper land.
+    intrusion = paths.intersection(copper.buffer(-TOLERANCE))
+    if intrusion.length > TOLERANCE:
+        point = intrusion.representative_point()
+        findings.append({"message": "Środek przejazdu przecina chronioną miedź.",
+                         "x": point.x, "y": point.y})
     if loss > .0001:
         point = swept.intersection(copper).representative_point()
         (notices if allow_loss else findings).append({
@@ -345,6 +373,8 @@ def generate(data, project, profile, clearance, directory, *, allow_pad_trim=Fal
         checks = verify_sweep(copper, stock, program, diameter, allow_loss=True)
         swept = emitted_paths(program).buffer(diameter/2, quad_segs=32)
         removed = copper.intersection(swept)
+        if removed.area <= .0001:
+            removed = GeometryCollection()
         changes = []
         for target in polygons(copper):
             loss = target.intersection(swept)
@@ -370,6 +400,8 @@ def generate(data, project, profile, clearance, directory, *, allow_pad_trim=Fal
               "diameterMm": diameter, "depthMm": depth,
               "clearanceMm": clearance, "conditions": conditions,
               "numerics": {"offsetMarginMm": MARGIN,
+                           "voronoiUnionGridMm": NC_GRID,
+                           "voronoiSitePerturbationMm": NC_GRID,
                            "simplificationMm": .004,
                            "gerberArcErrorMm": .001},
               "checks": checks, "boundsMm": program["bounds_mm"],
