@@ -27,7 +27,7 @@ function TestPreview({plan, map, origin}) {
   </figure>;
 }
 
-export function ProfilePanel({controller, cnc, ask}) {
+export function ProfilePanel({controller, cnc, ask, operationSelector}) {
   const selected=cnc.calibration_profiles?.selected || defaultProfile;
   const service=cnc.calibration || {};
   const plan=cnc.profile_test_plan;
@@ -46,9 +46,9 @@ export function ProfilePanel({controller, cnc, ask}) {
   const repeat=service.repeat;
   const inRepeatArea=cnc.position && map?.area && cnc.position[0]>=map.area.X[0]-.002 && cnc.position[0]<=map.area.X[1]+.002 && cnc.position[1]>=map.area.Y[0]-.002 && cnc.position[1]<=map.area.Y[1]+.002 && cnc.position[2]>=0 && cnc.position[2]<=3;
   const selectReady=controller.known.value&&!busy&&(!cnc.connected||controller.manualReady.value);
-  return <section class="service-panel profile-panel"><div class="service-title"><h2>Profile</h2><span>Serwis działa niezależnie</span></div>
+  return <section class={`service-panel profile-panel ${tab==='settings'?'profile-config-panel':''}`}><header class="profile-panel-heading"><h2>Profile</h2>{operationSelector}
     <AppSelect id="profile-choice" label="Profil frezu V" value={selected.id} disabled={!selectReady} onChange={id=>controller.send({action:'profile_select',profile_id:id})} options={(cnc.calibration_profiles?.profiles||[defaultProfile]).map(profile=>({value:profile.id,label:profile.name}))}/>
-    <div class="profile-subtabs" role="tablist" aria-label="Widok profilu" onKeyDown={tabKey}><button id="profile-settings-tab" type="button" role="tab" tabIndex={tab==='settings'?0:-1} aria-selected={tab==='settings'} aria-controls="profile-content" onClick={()=>setTab('settings')}>Ustawienia</button><button id="profile-test-tab" type="button" role="tab" tabIndex={tab==='test'?0:-1} aria-selected={tab==='test'} aria-controls="profile-content" onClick={()=>setTab('test')}>Test profilu</button></div>
+    </header><div class="profile-subtabs" role="tablist" aria-label="Widok profilu" onKeyDown={tabKey}><button id="profile-settings-tab" type="button" role="tab" tabIndex={tab==='settings'?0:-1} aria-selected={tab==='settings'} aria-controls="profile-content" onClick={()=>setTab('settings')}>Ustawienia</button><button id="profile-test-tab" type="button" role="tab" tabIndex={tab==='test'?0:-1} aria-selected={tab==='test'} aria-controls="profile-content" onClick={()=>setTab('test')}>Test profilu</button></div>
     <div id="profile-content" role="tabpanel" aria-labelledby={tab==='settings'?'profile-settings-tab':'profile-test-tab'}>
     {tab==='settings'?<ProfileSettings controller={controller} cnc={cnc} ask={ask}/>:<>
     {plan?.settings&&<p class="profile-test-conditions">Z −{plan.settings.depth} mm · frez {plan.settings.tip} / {plan.settings.angle}° · XY {plan.settings.feed} · wejście Z {plan.settings.plunge} mm/min · S{plan.settings.power}</p>}

@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import secrets
+from datetime import datetime, timezone
 
 from monitor.jobs import WORD
 
@@ -98,6 +99,31 @@ def fingerprint(profile):
     return hashlib.sha256(json.dumps(
         data, sort_keys=True, separators=(",", ":"), allow_nan=False
     ).encode()).hexdigest()
+
+
+def groove_evidence(profile):
+    """Bind the operator's measurement to all calibration inputs, not a name."""
+    return {"depth": profile["depth"], "conditions": profile["conditions"],
+            "samples": [{"depth": row["depth"], "width": row["width"],
+                         "measured_width": row["measured_width"],
+                         "used_diameter": row["geometry"]["diameter_mm"]}
+                        for row in profile["observations"]]}
+
+
+def groove_width(profile):
+    return profile["model"]["intercept_mm"] + (
+        profile["model"]["slope"] * profile["depth"])
+
+
+def validate_groove_confirmation(profile, confirmation):
+    """A checkbox attests an exact width; it must never alter the tool model."""
+    if not isinstance(confirmation, dict) or confirmation.get(
+        "evidence") != groove_evidence(profile) or not finite(
+            confirmation.get("diameter_mm")) or not math.isclose(
+                confirmation["diameter_mm"], groove_width(profile),
+                rel_tol=0, abs_tol=1e-8):
+        raise ValueError("Dane kalibracji zmieniły się. Ponownie zmierz "
+                         "rowek i potwierdź aktualny wynik.")
 
 
 def validate_depth(depth, model):
@@ -229,6 +255,9 @@ class ProfileStore:
                     raise ValueError("Niespójne dane kalibracji.")
                 if "depth" in profile:
                     validate_depth(profile["depth"], profile["model"])
+                if profile.get("groove_verification") is not None:
+                    validate_groove_confirmation(
+                        profile, profile["groove_verification"])
             if data.get("active") not in ["default"] + [
                 profile["id"] for profile in data["profiles"]
             ]:
@@ -300,6 +329,13 @@ class ProfileStore:
         validate_depth(depth, fitted["model"])
         profile = {"id": secrets.token_hex(8), "name": name.strip(),
                    **fitted, "observations": rows, "depth": float(depth)}
+        confirmation = payload.get("groove_confirmation")
+        if confirmation is not None:
+            validate_groove_confirmation(profile, confirmation)
+            profile["groove_verification"] = {
+                "evidence": groove_evidence(profile),
+                "diameter_mm": groove_width(profile),
+                "confirmed_at": datetime.now(timezone.utc).isoformat()}
         revision = payload.get("revision_of")
         if revision is not None:
             if not any(item["id"] == revision

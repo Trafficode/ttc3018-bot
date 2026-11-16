@@ -43,6 +43,12 @@ single-pass paths and never increase their copper loss, even with pad-trim
 approval. Suppress extra lanes where adjacent copper leaves too little room.
 Never split a wider virtual medial contour into inward/outward cutter lanes.
 
+Only the operator may attest a physical groove measurement. Keep that explicit
+confirmation bound to the exact calibration observations, cutting conditions and
+depth. Editing those values clears the confirmation; old profiles start
+unverified. Agents may simulate confirmations only in isolated test stores,
+never mark a real machine's profile as measured or change its cutting model.
+
 Project Z reference permits at most 10 mm travel; subsequent surface-grid
 descents remain capped at 1.4 mm. Project probes use G38.3: only a coherent
 PRB success=0, command acknowledgement and fresh Idle/unchanged WCO may end as a

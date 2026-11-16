@@ -95,10 +95,10 @@ export function PcbProfiles({controller,kind}) {
 export function ProfileHub({controller,cnc,ask,kind='isolation',onKindChange}) {
   const [localKind,setLocalKind]=useState(kind);
   const selected=onKindChange ? kind : localKind;
+  const operationSelector=<AppSelect id="profile-operation" label="Rodzaj obróbki" value={selected}
+      options={operationChoices} onChange={value=>{setLocalKind(value);onKindChange?.(value);}}/>;
   return <section class="profile-hub">
-    <AppSelect id="profile-operation" label="Rodzaj obróbki" value={selected}
-      options={operationChoices} onChange={value=>{setLocalKind(value);onKindChange?.(value);}}/>
-    {selected==='isolation' ? <ProfilePanel controller={controller} cnc={cnc} ask={ask}/>
-      : <PcbProfiles key={selected} controller={controller} kind={selected}/>}
+    {selected==='isolation' ? <ProfilePanel controller={controller} cnc={cnc} ask={ask} operationSelector={operationSelector}/>
+      : <>{operationSelector}<PcbProfiles key={selected} controller={controller} kind={selected}/></>}
   </section>;
 }

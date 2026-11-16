@@ -6,6 +6,7 @@
 """All data and serial responses are simulated."""
 
 import json
+import copy
 from pathlib import Path
 import tempfile
 import subprocess
@@ -16,7 +17,7 @@ from unittest.mock import patch
 from monitor.calibration import Calibration, coupon, settings, tool_diameter
 from monitor.cnc import Controller
 from monitor.jobs import parse_program
-from monitor.profiles import ProfileStore, fit_profile
+from monitor.profiles import ProfileStore, fit_profile, groove_evidence, groove_width
 
 
 CONFIG = {"tip": 0.1, "angle": 30, "feed": 100, "plunge": 20,
@@ -71,6 +72,60 @@ class ProfileTests(unittest.TestCase):
         self.store.delete(profile["id"])
         self.assertEqual(self.store.active["id"], "default")
         self.assertEqual(self.store.data["profiles"], [])
+
+    def test_groove_confirmation_is_explicit_persistent_and_not_a_model_change(self):
+        original = self.activate()
+        self.assertNotIn("groove_verification", original)
+        confirmation = {"evidence": groove_evidence(original),
+                        "diameter_mm": groove_width(original)}
+        updated = self.store.update({**self.payload,
+            "profile_id": original["id"],
+            "profile_fingerprint": original["fingerprint"],
+            "groove_confirmation": confirmation})
+        self.assertEqual(updated["model"], original["model"])
+        self.assertEqual(updated["observations"], original["observations"])
+        self.assertEqual(updated["groove_verification"]["evidence"], confirmation["evidence"])
+        self.assertIn("confirmed_at", updated["groove_verification"])
+        self.assertEqual(ProfileStore(self.path).active, updated)
+        unconfirmed = self.store.update({**self.payload,
+            "profile_id": updated["id"],
+            "profile_fingerprint": updated["fingerprint"]})
+        self.assertNotIn("groove_verification", unconfirmed)
+
+    def test_stale_or_invented_groove_confirmation_is_rejected(self):
+        profile = self.activate()
+        payload = {**self.payload, "profile_id":profile["id"],
+                   "profile_fingerprint":profile["fingerprint"]}
+        confirmation = {"evidence":groove_evidence(profile),
+                        "diameter_mm":groove_width(profile)}
+        invalid = [True, {}, {**confirmation,"diameter_mm":float("nan")},
+                   {**confirmation,"diameter_mm":.14}]
+        for value in invalid:
+            with self.assertRaises(ValueError):
+                self.store.update({**payload,"groove_confirmation":value})
+        for change in ({"depth":.1}, {"samples":[
+                {"trial_id":"1","measured_width":.95},
+                {"trial_id":"2","measured_width":1}]}):
+            with self.assertRaises(ValueError):
+                self.store.update({**payload,**change,
+                                   "groove_confirmation":confirmation})
+        self.assertEqual(self.store.active,profile)
+
+    def test_manual_confirmation_binds_conditions_and_preserves_old_profiles(self):
+        payload = {**CONFIG,"source":"manual","name":"Pomiar",
+                   "samples":[{"depth":.05,"width":.7,"measured_width":.5}]}
+        profile = self.store.create(payload)
+        confirmation = {"evidence":groove_evidence(profile),
+                        "diameter_mm":groove_width(profile)}
+        for change in ({"feed":80}, {"plunge":10}, {"power":500}, {"angle":60}):
+            with self.assertRaises(ValueError):
+                self.store.create({**payload,**change,"groove_confirmation":confirmation})
+        copied = copy.deepcopy(confirmation)
+        copied["evidence"]["samples"][0]["used_diameter"] += .01
+        with self.assertRaises(ValueError):
+            self.store.create({**payload,"groove_confirmation":copied})
+        self.assertIsNone(ProfileStore(self.path).error)
+        self.assertNotIn("groove_verification",ProfileStore(self.path).data["profiles"][0])
 
     def test_manual_profile_needs_no_recorded_trials(self):
         self.store.data["trials"] = []

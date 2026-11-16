@@ -1,0 +1,22 @@
+const assert=require('node:assert/strict');
+(async()=>{
+  const {calibrationPreview:preview}=await import('../ui/src/profile-calibration.js');
+  const tool={tip:'.1',angle:'30',feed:'60',plunge:'5',power:'1000',depth:'.08'};
+  const rows=[{depth:'.08',width:'1.2',measured_width:'1',used_diameter:'.14287187078897964'}];
+  const result=preview(tool,rows);
+  assert.ok(Math.abs(result.width-.3428718707889795)<1e-12);
+  assert.equal(result.atSample,true);
+  assert.equal(result.evidence.samples[0].used_diameter,.14287187078897964);
+  for(const key of ['depth','tip','angle','feed','plunge','power'])assert.notEqual(preview({...tool,[key]:Number(tool[key])*1.1},rows).key,result.key);
+  for(const key of ['depth','width','measured_width','used_diameter'])assert.notEqual(preview(tool,[{...rows[0],[key]:Number(rows[0][key])+.001}]).key,result.key);
+  assert.equal(preview({...tool,depth:'.1'},rows).atSample,false);
+  assert.ok(Math.abs(preview({...tool,depth:'.1'},rows).width-(result.width+.02*2*Math.tan(Math.PI/12)))<1e-12);
+  const multi=[{depth:'.05',width:'1.1',measured_width:'1',used_diameter:'.1'},{depth:'.15',width:'1.3',measured_width:'1',used_diameter:'.1'}];
+  assert.ok(Math.abs(preview({...tool,depth:'.1'},multi).width-.3)<1e-12);
+  assert.ok(preview({...tool,depth:'.2'},multi).error);
+  for(const row of [{...rows[0],width:''},{...rows[0],measured_width:'NaN'},{...rows[0],used_diameter:''},{...rows[0],measured_width:'2'}])assert.ok(preview(tool,[row]).error);
+  for(const key of Object.keys(tool))assert.ok(preview({...tool,[key]:''},rows).error);
+  assert.ok(preview(tool,[]).error);
+  assert.ok(preview(tool,[rows[0],rows[0]]).error);
+  console.log('Profile calibration: measured-strip inference, live depth model, evidence binding and invalid inputs: PASS');
+})().catch(error=>{console.error(error);process.exitCode=1;});
