@@ -111,7 +111,7 @@ class ProbeTests(unittest.TestCase):
     def test_confirmation_bounds_and_actual_pin_test_required(self):
         for key, value in (
             ("confirmed", False), ("distance", 0), ("distance", 10.1),
-            ("distance", float("nan")), ("feed", 9), ("feed", 61),
+            ("distance", float("nan")),
             ("position", [0, 0, 2]),
         ):
             with self.subTest(key=key, value=value):

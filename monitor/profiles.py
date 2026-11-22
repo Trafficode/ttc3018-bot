@@ -16,6 +16,9 @@ from monitor.jobs import WORD
 
 
 CONDITIONS = ("tip", "angle", "feed", "plunge", "power")
+CONDITION_LIMITS = {"tip": (.01, .5), "angle": (10, 90), "feed": (10, 300),
+                    "plunge": (1, 100), "power": (1, 1000)}
+GROOVE_AGREEMENT_MM = .02
 DEFAULT = {"id": "default", "name": "Domyślny", "model": None,
            "fingerprint": "default", "depth": .05,
            "conditions": {"tip": .1, "angle": 30, "feed": 100,
@@ -28,8 +31,37 @@ def finite(value):
             and math.isfinite(value))
 
 
+def strip_diameter(row):
+    measured = row.get("measured_width")
+    used = row.get("geometry", {}).get("diameter_mm")
+    width = row.get("width")
+    if not all(finite(value) for value in (measured, used, width)):
+        raise ValueError("Brak poprawnego pomiaru lub geometrii próby.")
+    diameter = used + width - measured
+    if not .01 <= measured <= 3 or not 0 < diameter < 2:
+        raise ValueError(
+            f"Wyliczony rowek {diameter:.4f} mm jest niepoprawny. "
+            "Sprawdź nominalny i zmierzony pasek oraz rowek użyty w programie."
+        )
+    return diameter
+
+
+def measured_groove_diameter(measurement, geometry):
+    if not isinstance(measurement, dict):
+        raise ValueError("Brak pomiaru rowka.")
+    total, step = measurement.get("total_mm"), measurement.get("step_mm")
+    if not finite(total) or not .01 <= total <= 3 or not finite(step) or (
+        step < 0 or step != geometry.get("step_mm")
+    ):
+        raise ValueError("Pomiar rowka nie odpowiada geometrii próby.")
+    diameter = total - step
+    if not step + 1e-9 < diameter < 2:
+        raise ValueError("Rowek jest poza zakresem lub przejazdy nie zachodzą na siebie.")
+    return diameter
+
+
 def fit_profile(rows):
-    """Infer effective diameter from the strip left between two tool passes.
+    """Fit the effective diameter using the selected measurement for each trial.
 
     Using the diameter actually used to generate each trial avoids applying
     an existing correction twice. One observation offsets the nominal V model;
@@ -39,23 +71,18 @@ def fit_profile(rows):
         raise ValueError("Podaj od 1 do 8 pomiarów.")
     conditions = {key: rows[0][key] for key in CONDITIONS}
     points = []
-    for index, row in enumerate(rows, 1):
+    for row in rows:
         if any(row[key] != conditions[key] for key in CONDITIONS):
             raise ValueError("Próby muszą mieć ten sam frez, posuwy i S.")
-        measured = row.get("measured_width")
         depth = row.get("depth")
-        used = row.get("geometry", {}).get("diameter_mm")
-        width = row.get("width")
-        if not all(finite(v) for v in (measured, depth, used, width)):
-            raise ValueError("Brak poprawnego pomiaru lub geometrii próby.")
-        diameter = used + width - measured
-        if not 0.01 <= measured <= 3 or not 0 < diameter < 2:
-            raise ValueError(
-                f"Pomiar {index}: wyliczony rowek {diameter:.4f} mm jest "
-                "niepoprawny. Sprawdź nominalny pasek (ustawienie próbki), "
-                "zmierzony pasek i rowek użyty w programie."
-            )
-        if not 0.01 <= depth <= 0.3:
+        method = row.get("calibration_method")
+        if method == "groove":
+            diameter = measured_groove_diameter(row.get("groove_measurement"), row["geometry"])
+        elif method in (None, "strip"):
+            diameter = strip_diameter(row)
+        else:
+            raise ValueError("Nieznana metoda kalibracji.")
+        if not finite(depth) or not 0.01 <= depth <= 0.3:
             raise ValueError("Niepoprawne zagłębienie próby.")
         points.append((depth, diameter))
     depths = [point[0] for point in points]
@@ -104,8 +131,15 @@ def fingerprint(profile):
 def groove_evidence(profile):
     """Bind the operator's measurement to all calibration inputs, not a name."""
     return {"depth": profile["depth"], "conditions": profile["conditions"],
-            "samples": [{"depth": row["depth"], "width": row["width"],
-                         "measured_width": row["measured_width"],
+            "samples": [{**({"groove_measurement": row["groove_measurement"]}
+                            if "groove_measurement" in row else {}),
+                         **({"calibration_method": row["calibration_method"]}
+                            if "calibration_method" in row else {}),
+                         "depth": row["depth"], "width": row["width"],
+                         **({"measured_width": row["measured_width"]}
+                            if "measured_width" in row else {}),
+                         **({"corner_feed_mm_min": row["geometry"]["corner_feed_mm_min"]}
+                            if "corner_feed_mm_min" in row["geometry"] else {}),
                          "used_diameter": row["geometry"]["diameter_mm"]}
                         for row in profile["observations"]]}
 
@@ -117,6 +151,8 @@ def groove_width(profile):
 
 def validate_groove_confirmation(profile, confirmation):
     """A checkbox attests an exact width; it must never alter the tool model."""
+    if any(row.get("calibration_method") == "strip" for row in profile["observations"]):
+        raise ValueError("Pomiar paska nie potwierdza pomiaru rowka.")
     if not isinstance(confirmation, dict) or confirmation.get(
         "evidence") != groove_evidence(profile) or not finite(
             confirmation.get("diameter_mm")) or not math.isclose(
@@ -135,20 +171,46 @@ def validate_depth(depth, model):
                          "wpisz poprawną wartość 0,01–0,3 mm.")
 
 
+def validate_corner_feed(value, straight_feed):
+    if value is not None and (not finite(value) or not 1 <= value <= straight_feed):
+        raise ValueError("Posuw na zakrętach: od 1 mm/min do posuwu XY.")
+
+
+def profile_settings(payload):
+    name = payload.get("name")
+    if not isinstance(name, str) or not 1 <= len(name.strip()) <= 40:
+        raise ValueError("Nazwa profilu: 1–40 znaków.")
+    if any(ord(char) < 32 for char in name):
+        raise ValueError("Niepoprawna nazwa profilu.")
+    depth = payload.get("depth")
+    if not finite(depth) or not .01 <= depth <= .3:
+        raise ValueError("Zagłębienie: zakres 0,01–0,3 mm.")
+    conditions = cutting_conditions(payload)
+    corner_feed = payload.get("corner_feed")
+    validate_corner_feed(corner_feed, conditions["feed"])
+    result = {"name": name.strip(), "depth": float(depth), "conditions": conditions}
+    if corner_feed is not None:
+        result["corner_feed"] = float(corner_feed)
+    return result
+
+
+def cutting_conditions(payload):
+    conditions = {}
+    for key, (low, high) in CONDITION_LIMITS.items():
+        value = payload.get(key)
+        if not finite(value) or not low <= value <= high:
+            raise ValueError(f"{key}: wpisz wartość {low}–{high}.")
+        conditions[key] = float(value)
+    return conditions
+
+
 def manual_observations(payload, samples):
     """Accept explicit measurements without requiring recorded trial output.
 
     The supplied CAM diameter is evidence, not a hidden correction. If absent,
     use the nominal V-tool formula, suitable for trials made with Default.
     """
-    conditions = {}
-    limits = {"tip": (.01, .5), "angle": (10, 90), "feed": (10, 300),
-              "plunge": (1, 100), "power": (1, 1000)}
-    for key, (low, high) in limits.items():
-        value = payload.get(key)
-        if not finite(value) or not low <= value <= high:
-            raise ValueError(f"{key}: wpisz wartość {low}–{high}.")
-        conditions[key] = float(value)
+    conditions = cutting_conditions(payload)
     rows = []
     for index, sample in enumerate(samples, 1):
         if not isinstance(sample, dict):
@@ -180,6 +242,8 @@ def check_cam_program(active, program, payload):
     A marker is an operator declaration; geometry cannot prove which tool
     diameter CAM used. It never causes post-hoc XY transformations.
     """
+    if active.get("draft"):
+        raise ValueError("Szkic profilu służy tylko do testu; wybierz profil CAM.")
     marker = program.get("cam_profile")
     if active["id"] == "default" and marker is None:
         return
@@ -207,6 +271,7 @@ def check_cam_program(active, program, payload):
         raise ValueError("Profil przewiduje niedodatnią szerokość rowka.")
     motion = None
     feed = None
+    z = None
     for line in program["lines"]:
         words = WORD.findall(line["code"])
         for letter, value in words:
@@ -218,7 +283,7 @@ def check_cam_program(active, program, payload):
                 0, conditions["power"]
             ):
                 raise ValueError("Wartość S w NC nie odpowiada profilowi.")
-        axes = {key for key, value in words if key in "XYZ"}
+        axes = {key: float(value) for key, value in words if key in "XYZ"}
         if "depth" in active and any(
             key == "Z" and float(value) < 0
             and abs(float(value) + active["depth"]) > 1e-6
@@ -226,10 +291,13 @@ def check_cam_program(active, program, payload):
         ):
             raise ValueError("Wszystkie poziomy cięcia muszą odpowiadać "
                              "głębokości profilu.")
-        if motion == 1 and axes.intersection("XY"):
+        target_z = axes.get("Z", z)
+        level_above_surface = z == target_z and (target_z or 0) > 0
+        if motion == 1 and ("X" in axes or "Y" in axes) and not level_above_surface:
             if feed != conditions["feed"] or "Z" in axes:
                 raise ValueError("Profil wymaga zgodnego posuwu XY "
                                  "i pliku bez ramp XYZ.")
+        z = target_z
 
 
 class ProfileStore:
@@ -249,6 +317,12 @@ class ProfileStore:
             for profile in data["profiles"]:
                 if profile["fingerprint"] != fingerprint(profile):
                     raise ValueError("Niepoprawna suma kontrolna profilu.")
+                validate_corner_feed(profile.get("corner_feed"), profile["conditions"]["feed"])
+                if profile.get("draft") is True:
+                    profile_settings({**profile, **profile["conditions"]})
+                    if profile["model"] is not None or profile["observations"]:
+                        raise ValueError("Szkic nie może zawierać modelu.")
+                    continue
                 fitted = fit_profile(profile["observations"])
                 if any(profile[key] != fitted[key]
                        for key in ("conditions", "model")):
@@ -349,7 +423,10 @@ class ProfileStore:
         """Persist a new named profile without changing the selected one."""
         if len(self.data["profiles"]) >= 30:
             raise ValueError("Limit 30 profili; usuń nieużywany profil.")
-        profile = self._build(payload)
+        profile = ({"id": secrets.token_hex(8), **profile_settings(payload),
+                    "draft": True, "model": None, "observations": []}
+                   if payload.get("source") == "settings" else self._build(payload))
+        profile["fingerprint"] = fingerprint(profile)
         data = copy.deepcopy(self.data)
         data["profiles"].append(profile)
         self._commit(data)
@@ -363,7 +440,24 @@ class ProfileStore:
             raise ValueError("Wybierz edytowalny profil.")
         if payload.get("profile_fingerprint") != previous["fingerprint"]:
             raise ValueError("Profil został zmieniony; odśwież ustawienia.")
-        profile = self._build({**payload, "revision_of": previous["id"]})
+        source = payload.get("source")
+        if source == "settings":
+            settings = profile_settings({"corner_feed": previous.get("corner_feed"), **payload})
+            corner_feed = settings.get("corner_feed")
+            if previous.get("corner_feed") == corner_feed and all(
+                previous.get(key) == value for key, value in settings.items()
+            ):
+                return copy.deepcopy(previous)
+            if all(previous.get(key) == settings[key] for key in ("depth", "conditions")):
+                profile = {**previous, **settings}
+                if corner_feed is None:
+                    profile.pop("corner_feed", None)
+            else:
+                profile = {**settings, "draft": True, "model": None, "observations": []}
+        elif source == "profile_test":
+            profile = self._from_profile_test(previous, payload)
+        else:
+            profile = self._build({**payload, "revision_of": previous["id"]})
         profile["id"] = previous["id"]
         profile["revision"] = previous.get("revision", 1) + 1
         profile["fingerprint"] = fingerprint(profile)
@@ -372,6 +466,70 @@ class ProfileStore:
         data["profiles"] = [profile if item["id"] == previous["id"] else item
                             for item in data["profiles"]]
         self._commit(data)
+        return profile
+
+    def _from_profile_test(self, previous, payload):
+        """Use the selected operator measurement from the matching completed trial."""
+        if payload.get("confirmed") is not True:
+            raise ValueError("Potwierdź własny pomiar kalibracyjny.")
+        identity = {key: previous[key] for key in ("id", "fingerprint")}
+        trial = next((row for row in reversed(self.data["trials"])
+                      if row.get("mode") == "profile_test"
+                      and row.get("state") == "completed"
+                      and row.get("profile") == identity), None)
+        if not trial or trial["trial_id"] != payload.get("trial_id"):
+            raise ValueError("Wybierz ostatni zakończony test dla tych ustawień.")
+        geometry = trial["geometry"]
+        method = payload.get("calibration_method")
+        legacy = "calibration_method" not in payload
+        if not legacy and method not in ("strip", "groove"):
+            raise ValueError("Wybierz metodę: z paska albo z rowka.")
+        strip = payload.get("measured_width")
+        total = payload.get("measured_groove")
+        if ((legacy or method == "strip") and strip is None) or (
+            (legacy or method == "groove") and total is None
+        ):
+            raise ValueError("Wpisz pomiar dla wybranej metody.")
+        for value in (strip, total):
+            if value is None:
+                continue
+            if not finite(value) or not .01 <= value <= 3 or not math.isclose(
+                value * 100, round(value * 100), rel_tol=0, abs_tol=1e-7
+            ):
+                raise ValueError("Wpisz pomiar z krokiem 0,01 mm.")
+        strip_data, groove_data = {}, {}
+        inferred = measured_single = None
+        if strip is not None:
+            width = payload.get("width")
+            if not finite(width) or width not in geometry["strip_widths"]:
+                raise ValueError("Wybierz pasek z wykonanego testu.")
+            strip_data = {"width": width, "measured_width": strip}
+            inferred = strip_diameter({**trial, **strip_data})
+        if total is not None:
+            step = geometry["step_mm"]
+            measurement = {"total_mm": total, "step_mm": step}
+            measured_single = measured_groove_diameter(measurement, geometry)
+            if method == "groove" and step > 0 and payload.get("groove_continuous") is not True:
+                raise ValueError("Potwierdź, że oba przejazdy tworzą jeden ciągły rowek.")
+            groove_data = {"groove_measurement": measurement}
+        if inferred is not None and measured_single is not None and not math.isclose(
+            measured_single, inferred, rel_tol=0, abs_tol=GROOVE_AGREEMENT_MM + 1e-9
+        ) and (legacy or payload.get("accept_disagreement") is not True):
+            raise ValueError("Pomiary są rozbieżne. Potwierdź użycie wybranej metody.")
+        if legacy:
+            observation = {**trial, **strip_data, **groove_data}
+        else:
+            observation = {**trial, "calibration_method": method,
+                           **(strip_data if method == "strip" else groove_data)}
+        profile = {"name": previous["name"], **fit_profile([observation]),
+                   "observations": [observation], "depth": trial["depth"]}
+        if "corner_feed" in previous:
+            profile["corner_feed"] = previous["corner_feed"]
+        validate_depth(profile["depth"], profile["model"])
+        if legacy or method == "groove":
+            profile["groove_verification"] = {
+                "evidence": groove_evidence(profile), "diameter_mm": groove_width(profile),
+                "confirmed_at": datetime.now(timezone.utc).isoformat()}
         return profile
 
     def select(self, profile_id):
@@ -395,7 +553,7 @@ class ProfileStore:
                             if item["id"] != profile_id]
         self._commit(data)
 
-    def resolve(self, config, payload):
+    def resolve(self, config, payload, *, allow_draft=False):
         """Bind current UI parameters to the exact active calibration model."""
         if self.error:
             raise ValueError(self.error)
@@ -405,6 +563,8 @@ class ProfileStore:
             != active["fingerprint"]
         ):
             raise ValueError("Profil zmienił się; odśwież ustawienia.")
+        if active.get("draft") and not allow_draft:
+            raise ValueError("Ukończ kalibrację szkicu przed użyciem do frezowania.")
         if not active["model"]:
             return config
         if any(config[key] != value

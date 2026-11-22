@@ -55,18 +55,23 @@ class SurfaceTests(unittest.TestCase):
         self.start()
         self.receive("[PRB:0,0,5:1]\nok\n<Idle|MPos:0,0,4.997|Pn:P>\n")
         self.assertIn(b"G10L20P1Z-0.0030\n", self.port.writes)
-        self.receive("ok\nok\n<Idle|MPos:0,0,6|WCO:0,0,5>\n")
+        z = 5 + self.cnc.surface.clearance
+        self.receive(f"ok\nok\n<Idle|MPos:0,0,{z}|WCO:0,0,5>\n")
         self.assertEqual(self.cnc.surface.state, "xy_ack")
 
     def sample(self, point, height):
         x, y = point["x"], point["y"]
-        self.receive(f"ok\n<Idle|MPos:{x},{y},6|WCO:0,0,5>\n")
+        travel_z = 5 + self.cnc.surface.clearance
+        self.receive(f"ok\n<Idle|MPos:{x},{y},{travel_z}|WCO:0,0,5>\n")
+        if travel_z > 6:
+            self.assertEqual(self.cnc.surface.state, "approach_ack")
+            self.receive(f"ok\n<Idle|MPos:{x},{y},6>\n")
         self.assertEqual(self.cnc.surface.state, "probing")
         z = 5 + height
         self.receive(f"[PRB:{x},{y},{z}:1]\nok\n"
                      f"<Idle|MPos:{x},{y},{z - 0.002}|Pn:P>\n")
         self.assertEqual(self.cnc.surface.state, "retract_ack")
-        self.receive(f"ok\n<Idle|MPos:{x},{y},6|WCO:0,0,5>\n")
+        self.receive(f"ok\n<Idle|MPos:{x},{y},{travel_z}|WCO:0,0,5>\n")
 
     def complete(self):
         self.reference()
@@ -84,17 +89,33 @@ class SurfaceTests(unittest.TestCase):
         self.assertEqual(surface.job_id, self.cnc.jobs.job_id)
         self.assertEqual(sum(b"G38.2" in v for v in self.port.writes), 10)
         self.assertEqual(sum(b"G10" in v for v in self.port.writes), 1)
-        self.assertEqual(sum(b"G0Z1" in v for v in self.port.writes), 10)
+        self.assertEqual(sum(v == b"G0Z3\n" for v in self.port.writes), 10)
         self.assertAlmostEqual(surface.samples[-1]["z"], 0.3)
         self.assertFalse(self.port.closed)
         self.assertFalse(any(b"M3" in v for v in self.port.writes))
+
+    def test_grid_uses_configured_xy_and_global_descent_cap(self):
+        self.cnc.action("probe_settings_save", {
+            "revision": self.cnc.probe_settings.status()["revision"],
+            "max_descent_mm": 1.2, "xy_feed_mm_min": 60,
+            "travel_clearance_mm": 2.5, "z_feed_mm_min": 30,
+        })
+        self.reference()
+        self.assertIn(b"G0Z2.5\n", self.port.writes)
+        self.assertIn(b"G90G38.2Z0.0000F30\n", self.port.writes)
+        self.assertIn(b"G1X0.0000Y0.0000F60\n", self.port.writes)
+        self.sample(self.cnc.surface.points[0], 0)
+        self.assertIn(b"G1Z1F30\n", self.port.writes)
+        self.assertIn(b"G90G38.2Z-0.2000F30\n", self.port.writes)
+        self.assertIn(b"G1X5.0000Y0.0000F60\n", self.port.writes)
+        self.assertAlmostEqual(self.cnc.surface.attempt["distanceMm"], 1.2)
 
     def test_grid_validation_and_file_identity_before_motion(self):
         for change in (
             {"job_id": "old"}, {"columns": 12}, {"rows": 1},
             {"columns": True}, {"area": {"X": [1, 10], "Y": [0, 10]}},
             {"area": {"X": [0, float("nan")], "Y": [0, 10]}},
-            {"clearance": 0}, {"below": 3}, {"clearance": 4},
+            {"below": 3},
         ):
             with self.subTest(change=change):
                 original = self.payload
@@ -128,8 +149,7 @@ class SurfaceTests(unittest.TestCase):
             self.assertTrue(self.port.closed)
 
     def test_probe_travel_cap_rejects_reference_and_grid_overruns(self):
-        for change in ({"distance": 1.401}, {"clearance": 1.1},
-                       {"below": 0.401}):
+        for change in ({"distance": 1.401}, {"below": 0.401}):
             original = self.payload
             self.payload = {**original, **change}
             with self.assertRaises(ValueError):
@@ -139,6 +159,7 @@ class SurfaceTests(unittest.TestCase):
 
     def test_position_rounding_cannot_extend_probe_beyond_1_4_mm(self):
         self.reference()
+        self.receive("ok\n<Idle|MPos:0,0,8|WCO:0,0,5>\n")
         self.receive("ok\n<Idle|MPos:0,0,6.009|WCO:0,0,5>\n")
         self.assertIn(b"G90G38.2Z-0.3910F20\n", self.port.writes)
         self.assertLessEqual(self.cnc.surface.distance, 1.4 + 1e-9)
@@ -154,10 +175,18 @@ class SurfaceTests(unittest.TestCase):
     def test_reference_offset_must_match_captured_contact(self):
         self.start()
         self.receive("[PRB:0,0,5:1]\nok\n<Idle|MPos:0,0,4.997|Pn:P>\n")
-        self.receive("ok\nok\n<Idle|MPos:0,0,7|WCO:0,0,6>\n")
+        self.receive("ok\nok\n<Idle|MPos:0,0,9|WCO:0,0,6>\n")
         self.assertEqual(self.cnc.surface.state, "failed")
         self.assertFalse(self.cnc.surface.valid)
         self.assertFalse(any(b"G1X" in value for value in self.port.writes))
+
+    def test_contact_while_approaching_ends_before_probe_command(self):
+        self.reference()
+        self.receive("ok\n<Idle|MPos:0,0,8|WCO:0,0,5>\n")
+        self.receive("ok\n<Run|MPos:0,0,6.1|Pn:P>\n")
+        self.assertEqual(self.cnc.surface.state, "failed")
+        self.assertFalse(self.cnc.surface.valid)
+        self.assertEqual(sum(b"G38.2" in command for command in self.port.writes), 1)
     def test_bilinear_interpolation_and_no_extrapolation(self):
         surface = self.complete()
         for x, y in ((0, 0), (10, 10), (3.2, 7.7), (10, 0), (0, 10)):
@@ -207,6 +236,10 @@ class SurfaceTests(unittest.TestCase):
                 live_offset(replies)
 
     def test_job_start_binds_map_and_creates_separate_execution(self):
+        self.cnc.action("probe_settings_save", {
+            **self.cnc.probe_settings.status(), "travel_clearance_mm": 4.25,
+            "xy_feed_mm_min": 80,
+        })
         surface = self.complete()
         payload = {"confirmed": True, "job_id": self.cnc.jobs.job_id,
                    "surface_map_id": surface.map_id}
@@ -221,7 +254,8 @@ class SurfaceTests(unittest.TestCase):
         self.cnc.jobs.tick(self.cnc)
         self.port.receive += b"ok\n"
         self.cnc.jobs.tick(self.cnc)
-        self.assertIn(b"G0Z3.3000\n", self.port.writes)
+        self.assertIn(b"G0Z4.5500\n", self.port.writes)
+        self.assertIn("G1X0Y0F80", [row["code"] for row in self.cnc.jobs.execution["lines"]])
         with self.assertRaises(RuntimeError):
             self.cnc._accept_status("<Idle|MPos:10,10,7|WCO:0,0,5.1>")
 

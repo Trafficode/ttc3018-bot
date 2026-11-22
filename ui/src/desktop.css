@@ -54,7 +54,6 @@
  .compact .profile-panel>.app-select{margin:0!important}
  .compact .profile-parameter-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}
  .compact .profile-parameter-grid .field-caption{min-height:36px;align-items:start}
- .compact .profile-subtabs{max-width:560px;width:100%}
  .compact .profile-hub>.app-select,.compact .profile-panel>.app-select{max-width:360px;margin-bottom:20px}
  .compact .parameter-field,.compact .process-editor>label:first-child{max-width:360px;width:100%}
  .compact .profile-form>label{max-width:520px}

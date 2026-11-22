@@ -68,9 +68,11 @@ def live_offset(replies):
     return result
 
 
-def compensate_program(program, surface, approach_mm=None):
-    """Split feed moves to <=0.5 mm XY and retain global rapid clearance."""
-    if not surface.valid or len(surface.samples) != len(surface.points):
+def compensate_program(program, surface, approach_mm=None, travel=None, *, preserve_clearance=False):
+    """Prepare an execution copy using the measured surface and travel limits."""
+    if surface is not None and (
+        not surface.valid or len(surface.samples) != len(surface.points)
+    ):
         raise ValueError("Brak kompletnej, aktualnej mapy powierzchni.")
     if approach_mm is not None and approach_mm != 0.5:
         raise ValueError("Podejście testu musi wynosić 0,5 mm.")
@@ -78,16 +80,20 @@ def compensate_program(program, surface, approach_mm=None):
     sources = []
     position = {"X": None, "Y": None, "Z": None}
     motion = None
-    raised = max(0, max(sample["z"] for sample in surface.samples))
-    spacing = min(
-        0.5,
-        (surface.area["X"][1] - surface.area["X"][0]) / (
-            surface.columns - 1
-        ) / 2,
-        (surface.area["Y"][1] - surface.area["Y"][0]) / (
-            surface.rows - 1
-        ) / 2,
-    )
+    source_feed = None
+    restore_feed = False
+    rapid_z = None
+    clearance = travel["travel_clearance_mm"] if travel is not None else None
+    raised = 0
+    if surface is not None:
+        raised = max(0, max(sample["z"] for sample in surface.samples))
+        spacing = min(0.5, *(
+            (surface.area[axis][1] - surface.area[axis][0]) / (count - 1) / 2
+            for axis, count in (("X", surface.columns), ("Y", surface.rows))
+        ))
+    elif travel is not None:
+        # Point-probed drilling uses the recipe's upper surface budget.
+        raised = program.get("pcb_flow", {}).get("surfaceSpreadMm", 0)
 
     def append(code, source):
         lines.append(code)
@@ -100,6 +106,8 @@ def compensate_program(program, surface, approach_mm=None):
         axes = {letter: float(value) for letter, value in words
                 if letter in "XYZ"}
         for letter, value in words:
+            if letter == "F":
+                source_feed = value
             if letter == "G" and float(value) in (0, 1):
                 motion = int(float(value))
             if letter == "G" and float(value) == 80:
@@ -108,21 +116,64 @@ def compensate_program(program, surface, approach_mm=None):
             append(original["code"], original["source_line"])
             continue
         target = {**position, **axes}
+        horizontal = "X" in axes or "Y" in axes
+        level_above_surface = position["Z"] == target["Z"] and (target["Z"] or 0) > 0
         prefix = "".join(letter + value for letter, value in words
-                         if letter not in "XYZ" and not (
+                         if letter not in "XYZF" and not (
                              letter == "G" and float(value) in (0, 1)
                          ))
+        explicit_feed = any(letter == "F" for letter, _ in words)
+        source = original["source_line"]
+        if travel is not None and horizontal and (motion == 0 or (motion == 1 and level_above_surface)):
+            if (target["Z"] or 0) <= 0:
+                raise ValueError(f"Linia {source}: przed przejazdem XY podnieś Z nad materiał.")
+            travel_height = max(clearance, position["Z"], target["Z"]) if preserve_clearance else clearance
+            safe_z = travel_height + raised
+            if rapid_z != safe_z:
+                append(f"G0Z{safe_z:.4f}", source)
+            coords = "".join(letter + value for letter, value in words if letter in "XY")
+            append(f"{prefix}G1{coords}F{travel['xy_feed_mm_min']:g}", source)
+            rapid_z = safe_z
+            restore_feed = True
+            position = target
+            continue
         if motion == 0:
-            if target["Z"] is None or target["Z"] <= 0:
+            if target["Z"] is None or (surface is not None and target["Z"] <= 0):
                 raise ValueError("G0 pod powierzchnią: brak kompensacji.")
-            output = {**axes, "Z": target["Z"] + raised}
+            nominal_z = target["Z"]
+            if travel is not None and nominal_z > 0:
+                if not preserve_clearance:
+                    nominal_z = clearance
+                elif position["Z"] is None or nominal_z >= position["Z"]:
+                    nominal_z = max(nominal_z, clearance)
+            rapid_z = nominal_z + raised
+            output = {**axes, "Z": rapid_z}
             code = prefix + "G0" + "".join(
                 f"{axis}{value:.4f}" for axis, value in output.items()
             )
-            append(code, original["source_line"])
+            if explicit_feed:
+                code += f"F{source_feed}"
+            append(code, source)
         elif motion == 1:
             if any(value is None for value in position.values()):
                 raise ValueError("Brak pozycji przed ruchem kompensowanym.")
+            if travel is not None and horizontal and rapid_z is not None and position["Z"] > 0:
+                # Begin an authored ramp at its original surface-relative height.
+                ramp_z = position["Z"]
+                if surface is not None:
+                    ramp_z += height_at(surface, position["X"], position["Y"])
+                if abs(rapid_z - ramp_z) > .00005:
+                    append(f"G0Z{ramp_z:.4f}", source)
+            rapid_z = None
+            if explicit_feed or restore_feed:
+                prefix += f"F{source_feed}"
+                restore_feed = False
+            if surface is None:
+                append(prefix + "G1" + "".join(
+                    letter + value for letter, value in words if letter in "XYZ"
+                ), source)
+                position = target
+                continue
             if approach_mm is not None and set(axes) == {"Z"} and (
                 target["Z"] < 0 and position["Z"] > approach_mm
             ):
@@ -130,7 +181,7 @@ def compensate_program(program, surface, approach_mm=None):
                 # Only this vertical rapid uses the LOCAL surface height.
                 local = height_at(surface, position["X"], position["Y"])
                 append(f"G0Z{local + approach_mm:.4f}",
-                       original["source_line"])
+                       source)
             length = math.hypot(target["X"] - position["X"],
                                 target["Y"] - position["Y"])
             count = max(1, math.ceil(length / spacing))
@@ -143,12 +194,13 @@ def compensate_program(program, surface, approach_mm=None):
                 code = (prefix if step == 1 else "") + "G1" + "".join(
                     f"{axis}{value:.4f}" for axis, value in point.items()
                 )
-                append(code, original["source_line"])
+                append(code, source)
         else:
             raise ValueError("Nieobsługiwany ruch kompensacji.")
         position = target
     result = parse_program(program["name"], "\n".join(lines))
-    result["compensated"] = True
+    if surface is not None:
+        result["compensated"] = True
     # Execution keeps the identity/approval of the validated source job.
     if program.get("pcb_flow") is not None:
         result["pcb_flow"] = copy.deepcopy(program["pcb_flow"])

@@ -56,19 +56,15 @@ NC still uses the legacy Default workflow.
 
 ## Test pattern
 
-The test contains three parallel 10 mm copper strips of widths 0.3, 0.5 and
-1 mm and two copper octagons with opposite-vertex diameters 1 and 2 mm.
+The 5 × 5 mm test contains a vertical 0.3 mm copper strip, a horizontal
+0.5 mm strip and one copper octagon with a 1 mm opposite-vertex diameter.
+The strip length is up to 3 mm, with at least 0.4 mm around the predicted sweep.
 Only closed isolation contours are generated, using G1 straight segments.
 Unused copper is retained. There are no drilling or laminate cut-through moves.
 
-The probe rectangle is the exact bounding rectangle of the tool's full
-predicted sweep, with 1 mm added at each edge. There is no minimum 10 x 10 mm
-square. All paths and copper shapes are translated together so the lower-left
-sweep boundary is at local X=1, Y=1. Strip spacing grows when tool diameter
-requires more room. Both rectangle dimensions and predicted groove width are
-shown before probing; fields over 20 mm are rejected. Preview, nine probe
-points and G-code share the same paths and rectangle. The SVG canvas also
-follows the rectangle's aspect ratio rather than keeping a square empty area.
+The preview, probe rectangle and G-code use the same layout. Adjacent cutter
+sweeps have at least 0.15 mm separation. Test options whose sweep exceeds
+the available field are rejected before probing.
 
 The initial X/Y is the lower left of the displayed probe rectangle, not the
 edge of the first copper strip. Keep that whole field over fresh copper and
@@ -112,8 +108,8 @@ evidence. One probe/runner owns the serial stream at a time.
 
 ## Rapid vertical approach and manual finishing
 
-Profile tests use the full rapid XY clearance (nominal 2 mm plus the map's
-highest positive height). After XY reaches a contour, a separate vertical G0
+Profile tests use the workstation XY travel feed and clearance plus the
+map's highest positive height. After XY reaches a contour, a separate vertical G0
 descends to the interpolated local surface height plus 0.5 mm. From there,
 the profile's plunge feed descends to the unchanged cutting depth. This
 optimization is applied only while compiling the mapped profile test. It does

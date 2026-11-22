@@ -17,6 +17,11 @@ ACTIVE = {
 }
 
 
+def probe_target_z(target):
+    """Round toward the surface so the commanded descent never exceeds its cap."""
+    return math.ceil(target * 10000 - 1e-9) / 10000
+
+
 class ZProbe:
     """Nonblocking worker state; Controller.lock protects every operation."""
 
@@ -39,6 +44,7 @@ class ZProbe:
         self.missed = False
         self.miss_position = None
         self.attempt_offset = None
+        self.probe_limits = None
 
     def active(self):
         """Retain USB ownership through contact, zeroing and retraction."""
@@ -64,11 +70,10 @@ class ZProbe:
         if payload.get("confirmed") is not True:
             raise ValueError("Wymagane potwierdzenie sondowania.")
         distance = float(payload.get("distance", 0))
-        feed = float(payload.get("feed", 0))
         if not math.isfinite(distance) or not 0.1 <= distance <= 10:
             raise ValueError("Droga sondowania: 0,1–10 mm.")
-        if not math.isfinite(feed) or not 10 <= feed <= 60:
-            raise ValueError("Posuw sondowania: 10–60 mm/min.")
+        limits = controller.probe_settings.snapshot(payload)
+        feed = limits["z_feed_mm_min"]
         if controller.port is None or controller.jobs.active():
             raise ValueError("Połącz CNC i zakończ program.")
         controller._status()
@@ -114,14 +119,15 @@ class ZProbe:
         self.missed = False
         self.miss_position = None
         self.start_machine = machine[:]
-        self.distance = distance
+        self.probe_limits = limits
+        target = probe_target_z(position[2] - min(distance, limits["max_descent_mm"]))
+        self.distance = position[2] - target
         mode = 'G38.3' if self.recoverable_miss else 'G38.2'
-        self.command = f"G90{mode}Z{position[2] - distance:.4f}F{feed:g}"
-        self.record_attempt(position, float(f'{position[2]-distance:.4f}'), feed,
-                            offset=controller.offset)
+        self.command = f"G90{mode}Z{target:.4f}F{feed:g}"
+        self.record_attempt(position, target, feed, offset=controller.offset)
         self.lease = secrets.token_urlsafe(24)
         self.heartbeat_at = time.monotonic()
-        self.deadline = self.heartbeat_at + distance / feed * 60 + 8
+        self.deadline = self.heartbeat_at + self.distance / feed * 60 + 8
         self.query_at = 0
         return {"probe_lease": self.lease}
 

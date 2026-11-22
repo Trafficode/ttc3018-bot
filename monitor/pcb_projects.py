@@ -78,6 +78,10 @@ class PcbProjects:
                 raise ValueError("Pozycja zmieniła się. Potwierdź etap ponownie.")
             if not status.get("probe_tested") or status.get("probe_triggered") is not False:
                 raise ValueError("Sprawdź styk sondy i rozewrzyj go przed startem.")
+            probe_settings = status.get("probe_settings") or {}
+            if probe_settings.get("error") or ("probe_settings_revision" in payload and
+                payload["probe_settings_revision"] != probe_settings.get("revision")):
+                raise ValueError("Sprawdź ustawienia sondowania i potwierdź etap ponownie.")
             if not measure_only:
                 number(payload, "thicknessMm", .3, 3)
                 if stage == "isolation":

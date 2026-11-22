@@ -13,10 +13,11 @@ const assert=require('node:assert/strict');
  assert.ok(Math.abs(historical.attempt.targetZ-.782)<1e-8); // Old 1.4 mm reference.
  assert.equal(projectProbeFailure(cnc,'different'),null);
  assert.deepEqual(projectReadiness({...base,cnc}).execute,[],'past alarm is not a current interlock');
- const plan=firstProbePlan(cnc,'isolation',10,20);assert.equal(plan.distanceMm,10);assert.ok(Math.abs(plan.targetZ+7.818)<1e-8);
+ const plan=firstProbePlan(cnc,10,32);assert.equal(plan.distanceMm,10);assert.ok(Math.abs(plan.targetZ+7.818)<1e-8);
+ assert.equal(plan.feedMmMin,32);
  cnc.z_probe={...cnc.z_probe,error:'PROBE_NO_CONTACT',attempt:{phase:'grid',point:7,start:[5,5,1],targetZ:-.4,distanceMm:1.4,feedMmMin:20}};
  assert.equal(projectProbeFailure(cnc,'setup').code,'NO_CONTACT');assert.equal(projectProbeFailure(cnc,'setup').reference,false);
- assert.equal(firstProbePlan({position:[]},'isolation',10,20),null);
+ assert.equal(firstProbePlan({position:[]},10,20),null);
  const {createController}=await import('../ui/src/controller.js');let timer=0;const clock={setTimeout(){return ++timer},clearTimeout(){}};
  let state={control_token:'fixture',cnc:{...cnc,probe_tested:false,job:{state:'ready'},project_cycle:cycle}};const actions=[];
  const c=createController(async(url,options)=>{if(options?.body)actions.push(JSON.parse(options.body));return{ok:true,json:async()=>structuredClone(state)}},clock);

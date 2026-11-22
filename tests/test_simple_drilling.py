@@ -116,6 +116,10 @@ class SimpleStartTests(unittest.TestCase):
 
     def setUp(self):
         self.cnc = Controller()
+        self.cnc.action("probe_settings_save", {
+            **self.cnc.probe_settings.status(), "travel_clearance_mm": 2.5,
+            "xy_feed_mm_min": 81,
+        })
         self.cnc.port = Mock()
         self.cnc.jobs.load(parse_program("simple.nc", (
             "G21 G90 G94 G54\nG0 Z3\nG0 X0 Y0\n"
@@ -141,6 +145,10 @@ class SimpleStartTests(unittest.TestCase):
         self.cnc.action("job_start", {
             "job_id": self.cnc.jobs.job_id, "confirmed": True})
         self.assertEqual(self.cnc.jobs.state, "running")
+        commands = [line["code"] for line in self.cnc.jobs.execution["lines"]]
+        self.assertIn("G0Z2.6000", commands)
+        self.assertIn("G1X0Y0F81", commands)
+        self.assertIn("F17G1Z-1.6", commands)
         self.cnc.port.write.assert_not_called()
 
 

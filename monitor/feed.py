@@ -11,7 +11,7 @@ from monitor.jobs import WORD, parse_program
 
 
 def with_xy_feed(program, value):
-    """Override level XY G1 moves; retain original ramp and Z-only feeds."""
+    """Override level cutting XY moves while retaining authored ramp/Z feeds."""
     if isinstance(value, bool) or not isinstance(value, (int, float)) or (
         not math.isfinite(value) or not 1 <= value <= 300
     ):
@@ -43,7 +43,7 @@ def with_xy_feed(program, value):
                 for axis in "XY"
             )
             level = target["Z"] == position["Z"]
-            selected = value if horizontal and level else original_feed
+            selected = value if horizontal and level and target["Z"] <= 0 else original_feed
             # Explicitly restore original modal feed on every other G1 move.
             command = "".join(letter + number for letter, number in words
                               if letter != "F") + f"F{selected:g}"

@@ -32,6 +32,10 @@ class FeedTests(unittest.TestCase):
         cnc.port = Port()
         cnc._accept_status("<Idle|MPos:0,0,3|WCO:0,0,0>")
         cnc.jobs.load(parse_program("sample.nc", PROGRAM))
+        old = cnc.probe_settings.status()
+        saved = cnc.action("probe_settings_save", {
+            **old, "travel_clearance_mm": 4.5, "xy_feed_mm_min": 85,
+        })
         payload = {"job_id": cnc.jobs.job_id, "confirmed": True,
                    "xy_feed": 301}
         with patch.object(cnc, "_status"), patch.object(
@@ -41,10 +45,47 @@ class FeedTests(unittest.TestCase):
                 cnc.action("job_start", payload)
             self.assertFalse(cnc.jobs.active())
             payload["xy_feed"] = 75
-            cnc.action("job_start", payload)
+            with self.assertRaisesRegex(ValueError, "potwierdź ponownie"):
+                cnc.action("job_start", {**payload, "probe_settings_revision": old["revision"]})
+            cnc.action("job_start", {**payload, "probe_settings_revision": saved["revision"]})
         self.assertEqual(cnc.jobs.status()["xy_feed"], 75)
         self.assertFalse(cnc.jobs.status()["compensated"])
         self.assertEqual(cnc.port.writes, [])
+        commands = [row["code"] for row in cnc.jobs.execution["lines"]]
+        self.assertIn("G0Z4.5000", commands)
+        self.assertIn("G1X0Y0F85", commands)
+        self.assertIn("F75G1X5", commands)
+
+    def test_imported_travel_keeps_higher_clearance_and_restores_modal_ramp_feed(self):
+        source = parse_program("travel.nc", "\n".join([
+            "G21 G90 G94 G54", "M5", "G0 Z1", "G0 X0 Y0", "M3 S300",
+            "G1 Z-0.1 F20", "G1 X1 F40", "G0 X2 Y1 Z1",
+            "G1 X3 F90", "G1 X4 Z-0.1", "X5",
+            "G0 Z6", "X6 Y2 Z1", "M5", "M30",
+        ]))
+        before = copy.deepcopy(source)
+        work = compensate_program(
+            source, None, travel={"travel_clearance_mm": 3, "xy_feed_mm_min": 72},
+            preserve_clearance=True,
+        )
+        commands = [line["code"] for line in work["lines"]]
+        self.assertEqual(commands[2:9], [
+            "G0Z3.0000", "G1X0Y0F72", "M3S300", "F20G1Z-0.1",
+            "F40G1X1", "G0Z3.0000", "G1X2Y1F72",
+        ])
+        self.assertEqual(commands[9:15], [
+            "G1X3F72", "G0Z1.0000", "F90G1X4Z-0.1", "G1X5",
+            "G0Z6.0000", "G1X6Y2F72",
+        ])
+        self.assertEqual(source, before)
+        self.assertEqual(work["lines"][7]["source_line"], work["lines"][8]["source_line"])
+
+    def test_rapid_xy_that_stays_below_surface_is_rejected_before_execution(self):
+        source = parse_program("low.nc", PROGRAM.replace("G1 X5 F100", "G0 X5"))
+        with self.assertRaisesRegex(ValueError, "przed przejazdem XY podnieś Z"):
+            compensate_program(source, None, travel={
+                "travel_clearance_mm": 3, "xy_feed_mm_min": 85,
+            }, preserve_clearance=True)
 
     def test_modal_feed_restored_for_z_and_ramps(self):
         original = parse_program("sample.nc", PROGRAM)

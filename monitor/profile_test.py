@@ -11,6 +11,15 @@ from monitor.calibration import settings, tool_diameter
 from monitor.jobs import parse_program
 
 
+OVERLAPS = (25, 50, 75)
+STRIP_WIDTHS = (.3, .5)
+FIELD_WIDTH = FIELD_HEIGHT = 5
+OCTAGON_DIAMETER = 1
+EDGE_MARGIN = .4
+MIN_SWEEP_GAP = .15
+CORNER_ZONE_MM = .5
+
+
 def configuration(store, payload=None):
     """Read every cutting parameter from the immutable selected profile."""
     profile = store.active
@@ -18,7 +27,8 @@ def configuration(store, payload=None):
         raise ValueError("Ten profil nie ma stałej głębokości. "
                          "Ustaw ją w Ustawieniach i zapisz zmiany.")
     config = settings({**profile["conditions"], "depth": profile["depth"],
-                       "width": 1})
+                       "width": STRIP_WIDTHS[-1]})
+    config["corner_feed"] = profile.get("corner_feed")
     expected = {"profile_id": profile["id"],
                 "profile_fingerprint": profile["fingerprint"]}
     if payload is not None:
@@ -27,71 +37,110 @@ def configuration(store, payload=None):
         if any(key in payload and payload[key] != value
                for key, value in config.items()):
             raise ValueError("Test używa wyłącznie parametrów profilu.")
-    return store.resolve(config, expected)
+    passes = (payload or {}).get("passes", 1)
+    overlap = (payload or {}).get("overlap_percent", 50 if passes == 2 else 0)
+    if type(passes) is not int or passes not in (1, 2) or (
+        type(overlap) is not int or overlap not in (OVERLAPS if passes == 2 else (0,))
+    ):
+        raise ValueError("Wybierz obsługiwaną liczbę przejazdów i zakładkę.")
+    return {**store.resolve(config, expected, allow_draft=True),
+            "_profile_id": profile["id"], "passes": passes, "overlap_percent": overlap}
 
 
 def layout(config):
-    """Three 10 mm copper strips and two octagons, with outward offsets.
-
-    Octagon diameter means opposite vertices. Offsetting each flat edge by
-    the tool radius therefore increases circumradius by r/cos(pi/8).
-    """
+    """Place the narrow strip beside the wide strip and octagon in 5 × 5 mm."""
     diameter = tool_diameter(config, config["depth"])
     radius = diameter / 2
-    gap = max(.5, 2 * diameter + .2)
+    passes = config.get("passes", 1)
+    overlap = config.get("overlap_percent", 0)
+    step = diameter * (1 - overlap / 100) if passes == 2 else 0
+    total = diameter + step
+    octagon_scale = 1 / math.cos(math.pi / 8)
+    outer_offset = radius + step
+    octagon_sweep_radius = OCTAGON_DIAMETER / 2 + outer_offset * octagon_scale + radius
+    narrow, wide = STRIP_WIDTHS
+    inside_width = FIELD_WIDTH - 2 * EDGE_MARGIN
+    inside_height = FIELD_HEIGHT - 2 * EDGE_MARGIN
+    right_width = inside_width - (narrow + 2 * total) - MIN_SWEEP_GAP
+    right_center = FIELD_WIDTH - EDGE_MARGIN - right_width / 2
+    narrow_length = min(3, inside_height - 2 * total)
+    wide_length = min(3, right_width - 2 * total)
+    octagon_room = min(right_width, inside_height - (wide + 2 * total) - MIN_SWEEP_GAP)
+    if min(narrow_length, wide_length) < 1 or 2 * octagon_sweep_radius > octagon_room:
+        raise ValueError("Rowki nie mieszczą się w polu 5 × 5 mm z wymaganym odstępem. "
+                         "Wybierz jeden przejazd, większą zakładkę lub węższy rowek.")
+    offsets = [radius + lane * step for lane in range(passes)]
     shapes = []
-    cursor = 0
-    for width in (.3, .5, 1):
-        x, y = 0, cursor
-        copper = [[x, y], [x + 10, y], [x + 10, y + width], [x, y + width]]
-        path = [[x - radius, y - radius],
-                [x + 10 + radius, y - radius],
-                [x + 10 + radius, y + width + radius],
-                [x - radius, y + width + radius]]
-        shapes.append({"kind": "strip", "width": width, "length": 10,
-                       "copper": copper, "path": path})
-        cursor += width + gap
-    for size, cx in ((1, 1), (2, 2.5 + gap)):
-        centre = [cx, cursor + 1]
-        copper, path = [], []
-        for index in range(8):
-            angle = index * math.pi / 4
-            for points, distance in (
-                (copper, size / 2),
-                (path, size / 2 + radius / math.cos(math.pi / 8)),
-            ):
-                points.append([centre[0] + distance * math.cos(angle),
-                               centre[1] + distance * math.sin(angle)])
-        shapes.append({"kind": "octagon", "diameter": size,
-                       "copper": copper, "path": path})
-    # Bound the full cutter sweep, not just copper or tool centre lines.
-    # Translate the pattern so each outer sweep edge has exactly 1 mm margin.
-    path_points = [point for shape in shapes for point in shape["path"]]
-    low_x = min(point[0] for point in path_points) - radius
-    high_x = max(point[0] for point in path_points) + radius
-    low_y = min(point[1] for point in path_points) - radius
-    high_y = max(point[1] for point in path_points) + radius
-    border = 1.0
-    width = high_x - low_x + 2 * border
-    height = high_y - low_y + 2 * border
-    for shape in shapes:
-        for key in ("copper", "path"):
-            shape[key] = [[x - low_x + border, y - low_y + border]
-                          for x, y in shape[key]]
-    if width > 20 or height > 20:
-        raise ValueError("Rowek profilu jest za szeroki dla małego testu.")
-    return {"width": width, "height": height, "diameter": diameter,
-            "margin_mm": border,
+    left = EDGE_MARGIN + total
+    right = right_center - wide_length / 2
+    strips = (
+        (narrow, narrow_length, left, (FIELD_HEIGHT - narrow_length) / 2, narrow, narrow_length),
+        (wide, wide_length, right, EDGE_MARGIN + total, wide_length, wide),
+    )
+    for strip_width, length, x, y, dx, dy in strips:
+        copper = [[x, y], [x + dx, y], [x + dx, y + dy], [x, y + dy]]
+        paths = [[[x - offset, y - offset],
+                  [x + dx + offset, y - offset],
+                  [x + dx + offset, y + dy + offset],
+                  [x - offset, y + dy + offset]]
+                 for offset in offsets]
+        shapes.append({"kind": "strip", "width": strip_width, "length": length,
+                       "copper": copper, "paths": paths, "path": paths[0]})
+    centre = (right_center, FIELD_HEIGHT - EDGE_MARGIN - octagon_sweep_radius)
+    directions = [(math.cos(index * math.pi / 4), math.sin(index * math.pi / 4))
+                  for index in range(8)]
+    radii = [OCTAGON_DIAMETER / 2] + [
+        OCTAGON_DIAMETER / 2 + offset * octagon_scale for offset in offsets
+    ]
+    copper, *paths = [
+        [[centre[0] + distance * dx, centre[1] + distance * dy] for dx, dy in directions]
+        for distance in radii
+    ]
+    shapes.append({"kind": "octagon", "diameter": OCTAGON_DIAMETER,
+                   "copper": copper, "paths": paths, "path": paths[0]})
+    return {"width": FIELD_WIDTH, "height": FIELD_HEIGHT, "diameter": diameter,
+            "margin_mm": EDGE_MARGIN, "passes": passes, "overlap_percent": overlap,
+            "step_mm": step, "total_mm": total, "strip_gap_mm": right - left - narrow,
+            "diameter_source": "calibrated" if config.get("_calibration") else "nominal",
             "shapes": shapes,
-            "settings": settings(config)}
+            "settings": {**settings(config), "corner_feed": config.get("corner_feed")},
+            "corner_zone_mm": CORNER_ZONE_MM}
 
 
 def preview(store):
-    """Expose offline geometry even while CNC is disconnected."""
+    """Expose exact selectable geometry even while CNC is disconnected."""
     try:
-        return layout(configuration(store))
+        base = configuration(store)
+        result = layout(base)
+        result["profile_fingerprint"] = store.active["fingerprint"]
+        result["variants"] = {}
+        for overlap in OVERLAPS:
+            try:
+                result["variants"][str(overlap)] = layout(
+                    {**base, "passes": 2, "overlap_percent": overlap})
+            except ValueError as error:
+                result["variants"][str(overlap)] = {"error": str(error)}
+        return result
     except ValueError as error:
         return {"error": str(error)}
+
+
+def contour_moves(points, feed, corner_feed):
+    """Split the straight edges between turns of a closed coupon polygon."""
+    targets = points[1:] + points[:1]
+    if corner_feed is None or corner_feed == feed:
+        yield from ((x, y, feed) for x, y in targets)
+        return
+    for start, end in zip(points, targets):
+        x, y = start
+        dx, dy = end[0] - x, end[1] - y
+        length = math.hypot(dx, dy)
+        # Avoid a redundant straight move below the G-code coordinate resolution.
+        if length > 2 * CORNER_ZONE_MM + .0001:
+            fraction = CORNER_ZONE_MM / length
+            yield x + dx * fraction, y + dy * fraction, corner_feed
+            yield end[0] - dx * fraction, end[1] - dy * fraction, feed
+        yield end[0], end[1], corner_feed
 
 
 def program(origin, config):
@@ -99,26 +148,38 @@ def program(origin, config):
     plan = layout(config)
     ox, oy = origin
     commands = ["G21 G90 G94 G54", "M5", "G0 Z2"]
-    for index, shape in enumerate(plan["shapes"]):
-        points = shape["path"]
-        x, y = points[0]
-        commands.append(f"G0 X{ox+x:.4f} Y{oy+y:.4f}")
-        if index == 0:
-            commands.extend([f"M3 S{config['power']:g}", "G4 P2"])
-        commands.append(f"G1 Z{-config['depth']:.4f} "
-                        f"F{config['plunge']:g}")
-        for x, y in points[1:] + points[:1]:
-            commands.append(f"G1 X{ox+x:.4f} Y{oy+y:.4f} "
-                            f"F{config['feed']:g}")
-        commands.append("G0 Z2")
+    for lane in range(plan["passes"]):
+        for index, shape in enumerate(plan["shapes"]):
+            points = shape["paths"][lane]
+            x, y = points[0]
+            commands.append(f"G0 X{ox+x:.4f} Y{oy+y:.4f}")
+            if lane == index == 0:
+                commands.extend([f"M3 S{config['power']:g}", "G4 P2"])
+            commands.append(f"G1 Z{-config['depth']:.4f} "
+                            f"F{config['plunge']:g}")
+            for x, y, feed in contour_moves(points, config["feed"], config.get("corner_feed")):
+                commands.append(f"G1 X{ox+x:.4f} Y{oy+y:.4f} "
+                                f"F{feed:g}")
+            commands.append("G0 Z2")
     commands.extend(["M5", "M30"])
     result = parse_program("profile-test.nc", "\n".join(commands))
     result["tool_geometry"] = {
         "diameter_mm": plan["diameter"], "depth_mm": config["depth"],
-        "strip_width_mm": 1, "centreline_spacing_mm": 1 + plan["diameter"],
-        "profile_id": config.get("_calibration", {}).get("id", "default"),
+        "strip_width_mm": STRIP_WIDTHS[-1],
+        "centreline_spacing_mm": STRIP_WIDTHS[-1] + plan["diameter"],
+        "strip_widths": [shape["width"] for shape in plan["shapes"]
+                         if shape["kind"] == "strip"],
+        "strip_lengths_mm": [shape["length"] for shape in plan["shapes"]
+                             if shape["kind"] == "strip"],
+        "strip_gap_mm": plan["strip_gap_mm"],
+        "passes": plan["passes"], "overlap_percent": plan["overlap_percent"],
+        "step_mm": plan["step_mm"],
+        "profile_id": config.get("_profile_id", config.get("_calibration", {}).get("id", "default")),
         "correction": config.get("_calibration", {}).get("model"),
     }
+    if config.get("corner_feed") is not None:
+        result["tool_geometry"]["corner_feed_mm_min"] = config["corner_feed"]
+        result["tool_geometry"]["corner_zone_mm"] = plan["corner_zone_mm"]
     return result
 
 # ---------------------------------------------------------------------------

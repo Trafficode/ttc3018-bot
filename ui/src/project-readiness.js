@@ -16,6 +16,7 @@ export function projectReadiness({cnc={},known,pending,active,busy,xyReady,bound
     else if(cnc.probe_triggered!==false)add(base,'probe-reading','Brak odczytu wejścia sondy. Poczekaj na STYK/BRAK STYKU.');
   }
   if(pending)add(base,'pending','Trwa potwierdzanie poprzedniego polecenia.');
+  if(cnc.probe_settings?.error)add(base,'probe-settings','Zapisz poprawne ustawienia sondowania przed pomiarem.');
   if(busy)add(base,'busy','Trwa przygotowanie projektu lub zapis X/Y.');
   if(!xyReady)add(base,'xy','Ustaw frez w punkcie odniesienia i naciśnij „Ustaw tutaj zero X/Y”.');
   if(!bounds)add(base,'bounds','Brak obszaru pomiaru PCB. Poczekaj na podgląd lub przygotuj go ponownie.');
@@ -34,11 +35,11 @@ export function projectReadiness({cnc={},known,pending,active,busy,xyReady,bound
   return {measure:base,execute};
 }
 
-export function firstProbePlan(cnc,stageId,distance,feed) {
+export function firstProbePlan(cnc,distance,feed) {
   if(!Array.isArray(cnc.position)||cnc.position.length!==3||!cnc.position.every(Number.isFinite))return null;
   const travel=Number(distance);
   return {phase:'reference',start:[...cnc.position],targetZ:cnc.position[2]-travel,
-    distanceMm:travel,feedMmMin:stageId==='drilling'?Number(feed):20};
+    distanceMm:travel,feedMmMin:Number(feed)};
 }
 
 export function projectProbeFailure(cnc,setupId) {
@@ -47,7 +48,7 @@ export function projectProbeFailure(cnc,setupId) {
   // Older servers did not retain travel; only their fixed surface reference
   // can be reconstructed, not an arbitrary manual/drilling probe distance.
   const legacy=probe?.kind==='surface'&&probe.completed===0&&Array.isArray(cycle.position)
-    ?firstProbePlan({position:cycle.position},cycle.stage,1.4,20):null;
+    ?firstProbePlan({position:cycle.position},1.4,20):null;
   return {error:probe?.error||cycle.error,code:String(probe?.error||cycle.error).includes('PROBE_NO_CONTACT')?'NO_CONTACT':'ALARM:5',attempt:probe?.attempt||legacy,
     reference:(probe?.attempt||legacy)?.phase==='reference'};
 }

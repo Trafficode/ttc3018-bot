@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 from controller_fixture import Controller
 from monitor.cam import write_json
+from monitor.jobs import WORD
 from monitor.pcb_projects import PcbProjects
 import test_pcb_projects as fixtures
 from test_probes import Port
@@ -60,16 +61,24 @@ class ProjectCycleTests(unittest.TestCase):
     def complete_probe(self):
         scan=self.cnc.last_probe
         self.receive('[PRB:0,0,5:1]\nok\n<Idle|MPos:0,0,4.998|Pn:P>\n')
-        self.receive('ok\nok\n<Idle|MPos:0,0,6|WCO:0,0,5>\n')
+        travel_z=5+scan.clearance if scan is self.cnc.surface else 6
+        self.receive(f'ok\nok\n<Idle|MPos:0,0,{travel_z}|WCO:0,0,5>\n')
         if scan is self.cnc.surface:
             for point in scan.points:
                 x,y=point['x'],point['y']
-                self.receive(f'ok\n<Idle|MPos:{x},{y},6|WCO:0,0,5>\n')
+                self.receive(f'ok\n<Idle|MPos:{x},{y},{travel_z}|WCO:0,0,5>\n')
+                if travel_z>6:
+                    self.receive(f'ok\n<Idle|MPos:{x},{y},6>\n')
                 self.receive(f'[PRB:{x},{y},5:1]\nok\n<Idle|MPos:{x},{y},4.998|Pn:P>\n')
-                self.receive(f'ok\n<Idle|MPos:{x},{y},6|WCO:0,0,5>\n')
+                self.receive(f'ok\n<Idle|MPos:{x},{y},{travel_z}|WCO:0,0,5>\n')
         self.assertEqual(scan.state,'completed')
 
     def test_execute_prepares_then_maps_then_queues_one_compensated_cut(self):
+        self.cnc.action('probe_settings_save',{
+            'revision':self.cnc.probe_settings.status()['revision'],
+            'max_descent_mm':10,'xy_feed_mm_min':85,'travel_clearance_mm':4,
+            'z_feed_mm_min':30,
+        })
         result=self.store.execute(self.request())
         self.wait_phase('probing')
         self.assertEqual(self.cnc.surface.columns,3)
@@ -78,6 +87,12 @@ class ProjectCycleTests(unittest.TestCase):
         self.complete_probe();self.cnc.project_cycle.tick(self.cnc)
         self.assertEqual(self.cnc.project_cycle.record['phase'],'cutting')
         self.assertTrue(self.cnc.jobs.active());self.assertTrue(self.cnc.jobs.status()['compensated'])
+        self.assertIn(b'G0Z4\n',self.cnc.port.writes)
+        codes=[row['code'] for row in self.cnc.jobs.execution['lines']]
+        travel=codes.index('G1X0Y0F85')
+        self.assertTrue(any(code=='G0Z4.0000' for code in codes[:travel]))
+        feeds={float(value) for code in codes for letter,value in WORD.findall(code) if letter=='F'}
+        self.assertEqual(feeds,{5,60,85})
         source_flow=copy.deepcopy(self.cnc.jobs.program['pcb_flow'])
         self.assertEqual(self.cnc.jobs.status()['pcb_flow'],source_flow)
         self.assertIsNot(self.cnc.jobs.execution['pcb_flow'],self.cnc.jobs.program['pcb_flow'])
@@ -162,7 +177,8 @@ class ProjectCycleTests(unittest.TestCase):
     def test_grid_miss_is_recoverable_but_each_grid_descent_stays_bounded(self):
         self.store.execute(self.request(distance=10));self.wait_phase('probing')
         self.receive('[PRB:0,0,5:1]\nok\n<Idle|MPos:0,0,4.998|Pn:P>\n')
-        self.receive('ok\nok\n<Idle|MPos:0,0,6|WCO:0,0,5>\n')
+        self.receive('ok\nok\n<Idle|MPos:0,0,8|WCO:0,0,5>\n')
+        self.receive('ok\n<Idle|MPos:0,0,8|WCO:0,0,5>\n')
         self.receive('ok\n<Idle|MPos:0,0,6|WCO:0,0,5>\n')
         attempt=self.cnc.surface.status()['attempt']
         self.assertEqual(attempt['phase'],'grid');self.assertEqual(attempt['point'],1)

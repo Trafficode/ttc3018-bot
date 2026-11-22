@@ -62,9 +62,10 @@ class ProjectCycle:
         cnc.calibration.invalidate_repeat("Rozpoczęto pomiar Z projektu.")
         stage = self.record["stage"]
         current = cnc.status()
+        revision = {key: payload[key] for key in ("probe_settings_revision",) if key in payload}
         if stage == "drilling":
-            options = {"confirmed": True, "position": current["position"],
-                       "distance": payload.get("distance", 10), "feed": payload.get("feed", 20)}
+            options = {**revision, "confirmed": True, "position": current["position"],
+                       "distance": payload.get("distance", 10)}
             if self.record["measureOnly"]:
                 cnc.probe.start(cnc, options, recoverable_miss=True)
                 cnc.surface.invalidate("Wykonano osobny pomiar Z.")
@@ -78,10 +79,10 @@ class ProjectCycle:
             if not all(type(n) is int and 3 <= n <= 11 for n in (columns, rows)):
                 raise ValueError("Mapa PCB wymaga 3–11 punktów na każdej osi.")
             bounds = bounds or cnc.jobs.program["bounds_mm"]
-            options = {"confirmed": True, "position": current["position"],
+            options = {**revision, "confirmed": True, "position": current["position"],
                 "job_id": cnc.jobs.job_id, "columns": columns, "rows": rows,
                 "area": {"X": bounds["X"][:], "Y": bounds["Y"][:]},
-                "clearance": 1, "below": .4, "distance": payload.get("distance", 10), "feed": 20,
+                "below": .4, "distance": payload.get("distance", 10),
                 "perimeterOnly": stage == "outline"}
             if self.record["measureOnly"]:
                 cnc.surface.start(cnc, options, standalone_bounds=bounds,

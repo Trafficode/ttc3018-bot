@@ -10,8 +10,8 @@ import {PcbNumber} from './PcbField.jsx';
 export const operationChoices = [{value:'isolation',label:'Ścieżki · frez V'},
   {value:'drilling',label:'Wiercenie otworów'}, {value:'outline',label:'Wycinanie obrysu'}];
 const names = {drilling:'Wiercenie',outline:'Obrys'};
-const basic = {drilling:['drillDiameterMm','drillFeed','drillOverrunMm','clearanceMm'],
-  outline:['millDiameterMm','millFeed','millPlunge','stepDownMm','clearanceMm']};
+const basic = {drilling:['drillDiameterMm','drillFeed','drillOverrunMm'],
+  outline:['millDiameterMm','millFeed','millPlunge','stepDownMm']};
 
 function ProcessEditor({controller, profile, kind, onDone}) {
   const legacy = profile && !profile.kind;

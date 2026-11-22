@@ -3,6 +3,7 @@ import {AppSelect} from './AppSelect.jsx';
 import {Disclosure} from './FieldHelp.jsx';
 import {PcbNumber} from './PcbField.jsx';
 import {friendlyError,profileValuesValid} from './pcb-fields.js';
+import {probeSettings} from './probe-settings.js';
 
 const scopes=[{value:'all',label:'Ścieżki, wiercenie i obrys'},
   {value:'mechanical',label:'Wiercenie i obrys'},
@@ -16,10 +17,11 @@ const titles={drilling:'Profil wiercenia',outline:'Profil obrysu'};
 export function FlowSetup({source,controller,api,onPrepared,locked,filename,onOpenProfiles}) {
   const [store,setStore]=useState(null),[scope,setScope]=useState('all');
   const [selected,setSelected]=useState({}),[thickness,setThickness]=useState('');
-  const [clearance,setClearance]=useState(3),[confirmed,setConfirmed]=useState(false);
+  const [confirmed,setConfirmed]=useState(false);
   const [through,setThrough]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const operations=stages[scope],mechanical=operations.filter(kind=>kind!=='isolation');
-  const active=controller.cnc.value.calibration_profiles?.selected;
+  const cnc=controller.cnc.value;
+  const active=cnc.calibration_profiles?.selected;
   const available=kind=>(store?.profiles||[]).filter(profile=>!profile.kind || profile.kind===kind);
   const profiles=Object.fromEntries(mechanical.map(kind=>[kind,available(kind).find(profile=>profile.id===selected[kind])]));
   const outline=profiles.outline?.values;
@@ -69,7 +71,7 @@ export function FlowSetup({source,controller,api,onPrepared,locked,filename,onOp
         packageId:source.id,name:filename,operations,
         processProfiles:Object.fromEntries(mechanical.map(kind=>[kind,{
           id:profiles[kind].id,fingerprint:profiles[kind].fingerprint}])),
-        profileFingerprint:active?.fingerprint,clearanceMm:Number(clearance),
+        profileFingerprint:active?.fingerprint,clearanceMm:probeSettings(cnc).travel_clearance_mm,
         material:{thicknessMm:thicknessValue,confirmedThroughCut:through},
         confirmedDatum:true,confirmedSetup:true})});
       onPrepared(await response.json());
@@ -95,8 +97,6 @@ export function FlowSetup({source,controller,api,onPrepared,locked,filename,onOp
         <button type="button" class="text-button" onClick={()=>onOpenProfiles(kind)}>
           {available(kind).length?'Edytuj profile':'Utwórz profil'}</button>
       </div>)}
-      {operations.includes('isolation') && <PcbNumber name="clearanceMm" prefix="pcb-isolation"
-        value={clearance} onChange={setClearance} disabled={locked||busy}/>}
       {!isolationReady && <p role="alert">Ścieżki wymagają skalibrowanego frezu V. Wiercenie i obrys możesz przygotować osobno.</p>}
     </Disclosure>
     {profilesReady && <p class="pcb-help">{mechanical.map(kind=>profiles[kind].name).join(' · ')}{mechanical.length>0?' · parametry zapisane w profilach':''}</p>}

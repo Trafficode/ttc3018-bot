@@ -14,7 +14,7 @@ const legacyCapabilities={isolation:{available:true},outline:{available:true},
   drilling:{available:false,reason:'Wyślij ponownie projekt z aktualnego Tractora, aby rozpoznać otwory THT.'}};
 const phaseText=stage=>stage?.done?'Wykonano':stage?.stale?'Do przygotowania':stage?.state==='running'?'Przygotowanie':stage?.zReady?'Z gotowe':stage?.state==='ready'?(stage.report?.padTrimReview?.requiresAcceptance?'Zmiana padów':'Pomiar Z'):stage?.state==='failed'||stage?.state==='blocked'?'Problem':'Do wykonania';
 
-export function ProjectPanel({controller,ask,onManual,onPreparing,probeDistance,probeFeed,onMove}){
+export function ProjectPanel({controller,ask,onManual,onPreparing,onMove}){
   const [packages,setPackages]=useState([]),[selected,setSelected]=useState('');
   const [kind,setKind]=useState('isolation'),[thickness,setThickness]=useState('');
   const [stockDraft,setStockDraft]=useState(''),[stockEditing,setStockEditing]=useState(true);
@@ -152,7 +152,7 @@ export function ProjectPanel({controller,ask,onManual,onPreparing,probeDistance,
     <div id="project-stage-panel" role="tabpanel" aria-labelledby={`stage-${kind}`}>
       {kind==='outline'&&chosen?.values?.retention==='through'&&<label class="cam-confirm"><input type="checkbox" checked={through} disabled={locked} onChange={e=>setThrough(e.currentTarget.checked)}/><span>Mocowanie utrzyma PCB po wycięciu na wylot.</span></label>}
       {cad.length!==1&&<p role="alert">Prześlij z Tractora jedną paczkę projektu PCB.</p>}
-      <ProjectOperation key={`${selected}-${kind}`} controller={controller} ask={ask} api={api} setupId={run?.id} stageId={kind} stage={stage} busy={busy||settingXY} xyReady={!!run?.xyReady} grid={grid} onGrid={setGrid} isolationPasses={isolationPasses} onIsolationPasses={setIsolationPasses} probeDistance={probeDistance} probeFeed={probeFeed} through={through} sourceGeometry={sourceGeometry} sourceError={sourceError} profile={chosen} thickness={thickness} capability={capability} profileError={profileError||(kind==='outline'&&chosen?.values?.retention==='through'&&!through?'Potwierdź mocowanie do cięcia na wylot.':'')} prepare={()=>prepare(kind,true)} onProfile={id=>changeProfile(kind,id)} profiles={available(kind)} onMove={onMove}/>
+      <ProjectOperation key={`${selected}-${kind}`} controller={controller} ask={ask} api={api} setupId={run?.id} stageId={kind} stage={stage} busy={busy||settingXY} xyReady={!!run?.xyReady} grid={grid} onGrid={setGrid} isolationPasses={isolationPasses} onIsolationPasses={setIsolationPasses} through={through} sourceGeometry={sourceGeometry} sourceError={sourceError} profile={chosen} thickness={thickness} capability={capability} profileError={profileError||(kind==='outline'&&chosen?.values?.retention==='through'&&!through?'Potwierdź mocowanie do cięcia na wylot.':'')} prepare={()=>prepare(kind,true)} onProfile={id=>changeProfile(kind,id)} profiles={available(kind)} onMove={onMove}/>
       {stageErrors[kind]&&<p class="stage-error" role="alert">{stageErrors[kind]}</p>}
       {error&&<p role="alert">{error}</p>}
     </div>

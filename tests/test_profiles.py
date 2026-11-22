@@ -73,6 +73,60 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(self.store.active["id"], "default")
         self.assertEqual(self.store.data["profiles"], [])
 
+    def test_draft_and_completed_double_pass_measurements(self):
+        draft = self.store.create({**CONFIG, "source": "settings", "name": "Szkic",
+                                   "corner_feed": 25})
+        self.store.select(draft["id"])
+        store = ProfileStore(self.path)
+        self.assertEqual(store.active, draft)
+        with self.assertRaisesRegex(ValueError, "kalibrację"):
+            store.resolve(CONFIG, {"profile_id": draft["id"]})
+        identity = {"id": draft["id"], "fingerprint": draft["fingerprint"]}
+        trial = {**CONFIG, "trial_id": "coupon", "mode": "profile_test",
+                 "state": "completed", "profile": identity,
+                 "geometry": {"diameter_mm": .2, "step_mm": .1, "corner_feed_mm_min": 25,
+                              "strip_widths": [.3, .5, 1]}}
+        store.record(trial)
+        payload = {"source": "profile_test", "profile_id": draft["id"],
+                   "profile_fingerprint": draft["fingerprint"], "trial_id": "coupon",
+                   "confirmed": True, "width": 1, "measured_width": .99,
+                   "measured_groove": .31}
+        for invalid in ({"measured_groove": .19}, {"measured_groove": .45},
+                        {"measured_groove": .313}, {"width": 1.2},
+                        {"trial_id": "missing"}, {"confirmed": False}):
+            with self.assertRaises(ValueError):
+                store.update({**payload, **invalid})
+        result = store.update(payload)
+        self.assertFalse(result.get("draft"))
+        self.assertEqual(result["corner_feed"], 25)
+        self.assertEqual(groove_evidence(result)["samples"][0]["corner_feed_mm_min"], 25)
+        self.assertAlmostEqual(groove_width(result), .21)
+        self.assertEqual(result["observations"][0]["groove_measurement"],
+                         {"total_mm": .31, "step_mm": .1})
+        self.assertEqual(ProfileStore(self.path).active, result)
+        current = store.update({**CONFIG, "depth": .06, "source": "settings",
+            "name": result["name"], "profile_id": result["id"],
+            "profile_fingerprint": result["fingerprint"]})
+        self.assertTrue(current["draft"])
+        self.assertNotIn("groove_verification", current)
+        with self.assertRaises(ValueError):
+            store.update({**payload, "profile_fingerprint": current["fingerprint"]})
+
+    def test_corner_feed_edit_preserves_measured_model_and_can_be_cleared(self):
+        before = self.activate()
+        payload = {**CONFIG, "source": "settings", "name": before["name"],
+                   "profile_id": before["id"], "profile_fingerprint": before["fingerprint"]}
+        for invalid in (.9, 101, True, "25"):
+            with self.assertRaisesRegex(ValueError, "Posuw na zakrętach"):
+                self.store.update({**payload, "corner_feed": invalid})
+        edited = self.store.update({**payload, "corner_feed": 25})
+        self.assertEqual(edited["model"], before["model"])
+        self.assertEqual(edited["conditions"], before["conditions"])
+        self.assertEqual(ProfileStore(self.path).active, edited)
+        payload["profile_fingerprint"] = edited["fingerprint"]
+        self.assertEqual(self.store.update(payload), edited)
+        self.assertNotIn("corner_feed", self.store.update({**payload, "corner_feed": None}))
+
     def test_groove_confirmation_is_explicit_persistent_and_not_a_model_change(self):
         original = self.activate()
         self.assertNotIn("groove_verification", original)
@@ -91,6 +145,69 @@ class ProfileTests(unittest.TestCase):
             "profile_id": updated["id"],
             "profile_fingerprint": updated["fingerprint"]})
         self.assertNotIn("groove_verification", unconfirmed)
+
+    def profile_test_measurement(self, step=0):
+        draft = self.store.create({**CONFIG, "source": "settings", "name": "Próba"})
+        self.store.select(draft["id"])
+        self.store.record({
+            **CONFIG, "trial_id": "measurement", "mode": "profile_test", "state": "completed",
+            "profile": {"id": draft["id"], "fingerprint": draft["fingerprint"]},
+            "geometry": {"diameter_mm": .154, "step_mm": step, "strip_widths": [.3, .5, 1]},
+        })
+        return {"source": "profile_test", "profile_id": draft["id"],
+                "profile_fingerprint": draft["fingerprint"], "trial_id": "measurement",
+                "confirmed": True}
+
+    def test_strip_alone_sets_width_without_a_groove_attestation(self):
+        payload = self.profile_test_measurement()
+        saved = self.store.update({**payload, "calibration_method": "strip",
+                                   "width": 1, "measured_width": .8})
+        self.assertAlmostEqual(groove_width(saved), .354)
+        self.assertNotIn("groove_verification", saved)
+        observation = saved["observations"][0]
+        self.assertEqual(observation["calibration_method"], "strip")
+        self.assertNotIn("groove_measurement", observation)
+        self.assertEqual(ProfileStore(self.path).active, saved)
+
+    def test_standalone_groove_uses_direct_measurement_without_a_strip(self):
+        payload = self.profile_test_measurement()
+        for invalid in ({"measured_groove": .154}, {"measured_groove": True},
+                        {"trial_id": "old"}, {"confirmed": False},
+                        {"calibration_method": "both"}):
+            with self.assertRaises(ValueError):
+                self.store.update({**payload, "calibration_method": "groove",
+                                   "measured_groove": .15, **invalid})
+        saved = self.store.update({**payload, "calibration_method": "groove",
+                                   "measured_groove": .15})
+        self.assertAlmostEqual(groove_width(saved), .15)
+        self.assertNotIn("measured_width", saved["observations"][0])
+        self.assertEqual(saved["groove_verification"]["evidence"], groove_evidence(saved))
+        self.assertEqual(ProfileStore(self.path).active, saved)
+
+    def test_divergent_optional_measurement_requires_ack_and_is_not_in_the_model(self):
+        for method, expected in (("groove", .15), ("strip", .354)):
+            with self.subTest(method=method):
+                payload = {**self.profile_test_measurement(), "calibration_method": method,
+                           "width": 1, "measured_width": .8, "measured_groove": .15}
+                with self.assertRaisesRegex(ValueError, "rozbieżne"):
+                    self.store.update(payload)
+                saved = self.store.update({**payload, "accept_disagreement": True})
+                self.assertAlmostEqual(groove_width(saved), expected)
+                row = saved["observations"][0]
+                self.assertEqual("measured_width" in row, method == "strip")
+                self.assertEqual("groove_measurement" in row, method == "groove")
+
+    def test_double_groove_requires_continuity_and_subtracts_saved_step(self):
+        payload = {**self.profile_test_measurement(step=.1), "calibration_method": "groove",
+                   "measured_groove": .31, "step_mm": .2}
+        with self.assertRaisesRegex(ValueError, "ciągły"):
+            self.store.update(payload)
+        with self.assertRaises(ValueError):
+            self.store.update({**payload, "measured_groove": .19, "groove_continuous": True})
+        saved = self.store.update({**payload, "groove_continuous": True})
+        self.assertAlmostEqual(groove_width(saved), .21)
+        self.assertEqual(saved["observations"][0]["groove_measurement"],
+                         {"total_mm": .31, "step_mm": .1})
 
     def test_stale_or_invented_groove_confirmation_is_rejected(self):
         profile = self.activate()

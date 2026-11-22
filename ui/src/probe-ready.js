@@ -1,5 +1,6 @@
 export function probeBlockReason({cnc,known,pending,active,distance,feed}) {
   if(!known)return 'Brak aktualnego połączenia z aplikacją.';
+  if(cnc.probe_settings?.error)return 'Zapisz poprawne ustawienia sondowania przed pomiarem.';
   if(!cnc.connected)return 'Połącz CNC, aby ustawić zero sondą.';
   if(!cnc.fresh)return 'Oczekiwanie na świeży odczyt sterownika.';
   if(pending)return 'Trwa obsługa poprzedniego polecenia.';

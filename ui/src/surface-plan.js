@@ -39,7 +39,7 @@ export function surfaceHeights(map) {
 
 export function defaultSurfaceSettings(bounds) {
   // At Z=1 the 1.4 mm probe cap leaves 0.4 mm below nominal copper.
-  return {columns: 3, rows: 3, clearance: 1, below: 0.4, distance: 1.4, feed: 20, area: {
+  return {columns: 3, rows: 3, below: 0.4, distance: 1.4, area: {
     X: [...bounds.X], Y: [...bounds.Y]
   }};
 }
@@ -48,8 +48,10 @@ export function surfaceRequest(bounds, settings) {
   const current = settings || defaultSurfaceSettings(bounds);
   const plan = createSurfacePlan(bounds, current);
   if (plan.error) return {error: plan.error};
-  const params = Object.fromEntries(['clearance','below','distance','feed'].map(key => [key, Number(current[key] ?? {clearance:1,below:0.4,distance:1.4,feed:20}[key])]));
-  if (Object.values(params).some(value => !Number.isFinite(value)) || params.clearance < 1 || params.clearance > 1.3 || params.below < 0.1 || params.below > 0.4 || params.clearance + params.below > 1.4 + 1e-9 || params.distance < 0.1 || params.distance > 1.4 || params.feed < 10 || params.feed > 60) return {error:'Maksymalny zjazd sondy: 1,4 mm. Prześwit 1–1,3 mm + zakres pod zerem 0,1–0,4 mm: razem maks. 1,4 mm. Pierwszy zjazd 0,1–1,4 mm; posuw 10–60 mm/min.'};
+  const params = {below:Number(current.below??0.4),distance:Number(current.distance??1.4)};
+  if (Object.values(params).some(value => !Number.isFinite(value)) ||
+      params.below < 0.1 || params.below > 0.4 || params.distance < 0.1 || params.distance > 1.4)
+    return {error:'Pierwszy zjazd: 0,1–1,4 mm. Zakres pod zerem: 0,1–0,4 mm.'};
   return {columns:plan.columns, rows:plan.rows, area:plan.area, ...params, ...(current.perimeterOnly ? {perimeterOnly:true} : {})};
 }
 

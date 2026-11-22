@@ -82,6 +82,34 @@ changes connection state or moves the machine. Preserve deployed files before
 updates. Restarting the monitor or Pi still requires the operator's explicit
 confirmation of machine inactivity and readiness.
 
+## Workstation probe settings
+
+The gear button opens **Ustawienia stanowiska**. The saved values are the
+maximum Z search travel (0.1–10 mm, default 10 mm), probe Z feed (10–60 mm/min,
+default 20 mm/min), XY travel clearance (1–10 mm, default 3 mm) and XY travel
+feed (25–300 mm/min, default 100 mm/min). Settings apply across browsers and
+are stored in `~/.local/share/bark-beetle/probe-settings.json`.
+The panel creates this file on the first save; no manual installation is
+required. Saving requires a free workstation and issues no machine commands.
+
+The distance acts as a ceiling. The shorter limits for profile tests,
+surface-grid descents and explicitly shorter manual moves still apply. The
+grid’s XY travel uses the saved clearance above reference Z, followed by a
+vertical approach to 1 mm and a probe of up to 1.4 mm. The contact depth
+uses the measured reference. Check clamps and copper flatness before starting.
+
+All automatic XY transfers use the shared travel feed and clearance. This
+includes probing, profile tests, drilling, isolation, board outlines and
+uploaded NC. An uploaded NC can require a higher travel plane. XY rapid
+blocks that also specify Z are split so the lift occurs before XY movement.
+Pure Z moves and cutting ramps retain their purpose and feeds. With a map,
+the travel plane clears the highest measured surface. Point-probed drilling
+adds the recipe’s surface-height budget. Manual jog remains direct axis
+positioning, with Z chosen by the operator.
+
+A change to workstation settings invalidates completed Z preparation and
+profile replay.
+
 ## Camera and sensor acceptance
 
 Keep the stock `camera_auto_detect=1` in `/boot/firmware/config.txt` for the

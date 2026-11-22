@@ -1,0 +1,15 @@
+.probe-settings-panel{max-width:760px;min-width:0}
+.compact .tool-scroll .probe-settings-panel h2{margin:0 0 18px}
+.probe-settings-panel fieldset{padding:14px 16px;border:1px solid var(--border);border-radius:5px}
+.probe-settings-panel legend{padding:0 5px;font-size:15px;font-weight:700}
+.probe-settings-panel fieldset+fieldset{margin-top:12px}
+.probe-settings-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 22px}
+.probe-setting{display:grid;gap:6px;align-content:start;min-width:0}
+.probe-setting label{font-size:13px;font-weight:650;color:var(--ink)}
+.probe-setting-input{display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:13px;color:var(--muted)}
+.probe-setting-input input{width:min(100%,135px);min-width:0}
+.probe-setting small,.probe-settings-actions small{font-size:12px;line-height:1.45;color:var(--muted)}
+.probe-settings-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;margin-top:14px}
+.probe-settings-panel .field-error{margin-top:8px}
+.probe-settings-note{margin-top:10px;color:#864900;font-size:12px}
+@media(max-width:540px){.probe-settings-fields{grid-template-columns:1fr}.probe-settings-panel fieldset{padding:10px 12px}}

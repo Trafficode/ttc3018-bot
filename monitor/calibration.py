@@ -178,7 +178,7 @@ class CalibrationScan(SurfaceScan):
         if controller.offset is None:
             raise ValueError("Brak aktualnego WCO.")
         result = ZProbe.start(self, controller, {
-            **payload, "distance": MAX_PROBE_TRAVEL, "feed": 20})
+            **payload, "distance": MAX_PROBE_TRAVEL})
         self.auto_reference = True
         self.kind = "profile_test"
         self.map_id = secrets.token_hex(12)
@@ -188,7 +188,7 @@ class CalibrationScan(SurfaceScan):
         self.expected_xy_offset = controller.offset[:2]
         self.offset = self.reference = None
         self.sampling = False
-        self.clearance, self.below, self.feed = 1, .4, 20
+        self.configure_grid(.4)
         self.columns = self.rows = 3
         x, y = origin
         width, height = area_size
@@ -210,7 +210,7 @@ class CalibrationScan(SurfaceScan):
             raise ValueError("Ustaw frez pomiędzy Z=0 a Z=3 mm.")
         # ZProbe supplies confirmation, probe-test, modal and fresh-position guards.
         result = ZProbe.start(self, controller, {
-            **payload, "distance": MAX_PROBE_TRAVEL, "feed": 20,
+            **payload, "distance": MAX_PROBE_TRAVEL,
         })
         if controller.offset is None:
             raise ValueError("Brak aktualnego WCO.")
@@ -222,7 +222,7 @@ class CalibrationScan(SurfaceScan):
         self.reference = self.offset[2]
         self.reference_xy = origin[:]
         self.sampling = False
-        self.clearance, self.below, self.feed = 1, 0.4, 20
+        self.configure_grid(.4)
         self.columns = self.rows = 2
         x, y = origin
         self.area = {"X": [x, x + 12], "Y": [y, y + 5]}
@@ -511,7 +511,10 @@ class Calibration:
         if profile_test:
             from monitor.profile_test import configuration, program as build
 
-            config = configuration(self.profiles, payload)
+            options = {key: self.config[key] for key in ("passes", "overlap_percent")}
+            config = configuration(self.profiles, {**options, **payload})
+            if config != self.config:
+                raise ValueError("Plan testu zmienił się; powtórz pomiar Z.")
         else:
             config = settings(payload)
             build = coupon
@@ -524,6 +527,7 @@ class Calibration:
         program = compensate_program(
             build(self.origin, config), self.scan,
             approach_mm=0.5 if profile_test else None,
+            travel=self.scan.probe_limits,
         )
         self.runner.load(program)
         result = self.runner.start(self.runner.job_id)
@@ -531,9 +535,11 @@ class Calibration:
                         "mode": self.mode,
                         **settings(config), "trial_id": secrets.token_hex(12),
                         "geometry": program["tool_geometry"]}
+        if profile_test:
+            self.pending["profile"] = copy.deepcopy(self.profile_identity)
         self.config = config
         self.scan.invalidate("Pole wykorzystane; nowy test wymaga świeżej mapy.")
-        if profile_test:
+        if profile_test and config["passes"] == 1:
             self.repeat_snapshot = {
                 "id": secrets.token_hex(12), "valid": True, "passes": 0,
                 "job_id": self.runner.job_id, "session": self.session,

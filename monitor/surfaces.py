@@ -9,9 +9,10 @@ import math
 import secrets
 import time
 
-from monitor.probes import ZProbe
+from monitor.probes import ZProbe, probe_target_z
 
 MAX_PROBE_TRAVEL = 1.4
+GRID_APPROACH_MM = 1
 
 
 def plan_grid(bounds, payload):
@@ -91,7 +92,9 @@ class SurfaceScan(ZProbe):
         self.clearance = 2
 
     def active(self):
-        return super().active() or self.state in ("xy_ack", "xy_wait")
+        return super().active() or self.state in (
+            "xy_ack", "xy_wait", "approach_ack", "approach_wait",
+        )
 
     def invalidate(self, reason):
         """Keep diagnostic results but never reuse them as compensation."""
@@ -127,20 +130,13 @@ class SurfaceScan(ZProbe):
             raise ValueError("Punkty obrysu muszą leżeć na granicach "
                              "przebiegu frezu, bez rozszerzania mapy.")
         self.perimeter = outline
-        clearance = float(payload.get("clearance", 1))
         below = float(payload.get("below", 0.4))
         distance = float(payload.get("distance", MAX_PROBE_TRAVEL))
         reference_limit = 10 if recoverable_miss else MAX_PROBE_TRAVEL
         if not math.isfinite(distance) or not .1 <= distance <= reference_limit:
             raise ValueError(f"Pierwszy zjazd Z: wymagane 0,1–{reference_limit:g} mm.")
-        if not math.isfinite(clearance) or not 1 <= clearance <= 1.3 or (
-            not math.isfinite(below) or not 0.1 <= below <= 0.4
-            or clearance + below > MAX_PROBE_TRAVEL + 1e-9
-        ):
-            raise ValueError(
-                "Maksymalny zjazd sondy: 1,4 mm. Prześwit 1–1,3 mm, "
-                "zakres pod zerem 0,1–0,4 mm; ich suma maks. 1,4 mm."
-            )
+        if not math.isfinite(below) or not 0.1 <= below <= 0.4:
+            raise ValueError("Zakres pod zerem: 0,1–0,4 mm.")
         if controller.offset is None:
             raise ValueError("Brak odczytu WCO; zaczekaj na status CNC.")
         result = super().start(controller, {**payload, "distance": distance},
@@ -158,9 +154,13 @@ class SurfaceScan(ZProbe):
         self.offset = None
         self.reference = None
         self.sampling = False
-        self.clearance, self.below = clearance, below
-        self.feed = float(payload["feed"])
+        self.configure_grid(below)
         return result
+
+    def configure_grid(self, below):
+        self.clearance = self.probe_limits["travel_clearance_mm"]
+        self.below = below
+        self.feed = self.probe_limits["z_feed_mm_min"]
 
     def _write(self, controller, command, state):
         if command == "G0Z1":
@@ -184,16 +184,23 @@ class SurfaceScan(ZProbe):
         position = controller.report["position"]
         length = math.hypot(point["x"] - position[0],
                             point["y"] - position[1])
-        self.deadline = time.monotonic() + length / 100 * 60 + 10
+        xy_feed = self.probe_limits["xy_feed_mm_min"]
+        self.deadline = time.monotonic() + length / xy_feed * 60 + 10
         self._write(controller,
-                    f"G1X{point['x']:.4f}Y{point['y']:.4f}F100", "xy_ack")
+                    f"G1X{point['x']:.4f}Y{point['y']:.4f}F{xy_feed:g}", "xy_ack")
 
     def _accept(self, controller, line):
         if line == "ok" and self.state == "xy_ack":
             self.state = "xy_wait"
             self.query_at = 0
             return
-        special = self.state in ("xy_ack", "xy_wait", "retract_wait") or (
+        if line == "ok" and self.state == "approach_ack":
+            self.state = "approach_wait"
+            self.query_at = 0
+            return
+        special = self.state in (
+            "xy_ack", "xy_wait", "retract_wait", "approach_ack", "approach_wait",
+        ) or (
             self.sampling and self.state == "contact_wait"
         )
         if not line.startswith("<") or not special:
@@ -204,19 +211,28 @@ class SurfaceScan(ZProbe):
         if report["state"] not in ("Idle", "Run"):
             raise RuntimeError("Pomiar przerwany: " + report["state"])
         self._check_offset(controller)
+        if self.state in ("approach_ack", "approach_wait") and report["probe_triggered"]:
+            raise RuntimeError("Sonda dotknęła materiału podczas podejścia nad punktem.")
         if report["state"] != "Idle":
             return
         position, machine = report["position"], report.get("MPos")
         if position is None or machine is None:
             return
-        if self.state == "xy_wait":
+        if self.state in ("xy_wait", "approach_wait"):
             point = self.points[len(self.samples)]
+            expected_z = self.clearance if self.state == "xy_wait" else GRID_APPROACH_MM
             if abs(position[0] - point["x"]) > 0.01 or (
                 abs(position[1] - point["y"]) > 0.01
-                or abs(position[2] - self.clearance) > 0.01
+                or abs(position[2] - expected_z) > 0.01
                 or report["probe_triggered"]
             ):
                 raise RuntimeError("Niepoprawna pozycja lub styk przed próbą.")
+            if self.state == "xy_wait" and self.clearance > GRID_APPROACH_MM:
+                self.deadline = (
+                    time.monotonic() + (self.clearance - GRID_APPROACH_MM) / self.feed * 60 + 8
+                )
+                self._write(controller, f"G1Z{GRID_APPROACH_MM:g}F{self.feed:g}", "approach_ack")
+                return
             self.start_machine = machine[:]
             self.contact = None
             self.missed = False
@@ -224,9 +240,10 @@ class SurfaceScan(ZProbe):
             self.sampling = True
             # Respect the travel cap even if reported Z differs slightly from
             # the commanded clearance because of step/position rounding.
-            target = max(-self.below, position[2] - MAX_PROBE_TRAVEL)
+            limit = min(MAX_PROBE_TRAVEL, self.probe_limits["max_descent_mm"])
+            target = probe_target_z(max(-self.below, position[2] - limit))
             self.distance = position[2] - target
-            self.record_attempt(position, float(f'{target:.4f}'), self.feed,
+            self.record_attempt(position, target, self.feed,
                                 phase="grid", point=point["number"], offset=controller.offset)
             self.deadline = (
                 time.monotonic() + self.distance / self.feed * 60 + 8
@@ -240,7 +257,7 @@ class SurfaceScan(ZProbe):
             ):
                 raise RuntimeError("Niespójna pozycja po kontakcie.")
             height = self.contact[2] - self.reference
-            if abs(height) > 1 or height >= self.clearance - 0.2:
+            if abs(height) > 1 or height >= GRID_APPROACH_MM - 0.2:
                 raise RuntimeError("Za duża różnica wysokości laminatu.")
             point = self.points[len(self.samples)]
             self.samples.append({**point, "z": height})

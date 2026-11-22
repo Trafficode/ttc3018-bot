@@ -31,10 +31,7 @@ class CalibrationTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
-        self.cnc = Controller()
-        self.cnc.calibration = Calibration(
-            Path(self.directory.name) / "profile.json"
-        )
+        self.cnc = Controller(profile_path=Path(self.directory.name) / "profile.json")
         self.port = Port()
         self.cnc.port = self.port
         self.cnc.info = ["$6=1", "$13=0"]
@@ -59,17 +56,20 @@ class CalibrationTests(unittest.TestCase):
 
     def complete(self):
         self.start()
-        self.receive("ok\n<Idle|MPos:12,23,6|WCO:10,20,5>\n")
         scan = self.cnc.calibration.scan
+        travel_z = 5 + scan.clearance
+        self.receive(f"ok\n<Idle|MPos:12,23,{travel_z}|WCO:10,20,5>\n")
         for point in scan.points:
             x, y = point["x"], point["y"]
-            self.receive(f"ok\n<Idle|MPos:{x+10},{y+20},6>\n")
+            self.receive(f"ok\n<Idle|MPos:{x+10},{y+20},{travel_z}>\n")
+            if travel_z > 6:
+                self.receive(f"ok\n<Idle|MPos:{x+10},{y+20},6>\n")
             self.assertEqual(scan.state, "probing")
             height = 0.01 * (x - 2) + 0.02 * (y - 3)
             z = 5 + height
             self.receive(f"[PRB:{x+10},{y+20},{z}:1]\nok\n"
                          f"<Idle|MPos:{x+10},{y+20},{z-.002}|Pn:P>\n")
-            self.receive(f"ok\n<Idle|MPos:{x+10},{y+20},6>\n")
+            self.receive(f"ok\n<Idle|MPos:{x+10},{y+20},{travel_z}>\n")
         self.assertTrue(scan.valid)
         return scan
 
@@ -169,7 +169,8 @@ class CalibrationTests(unittest.TestCase):
         self.assertEqual(service.config, {**self.config, "depth": .1,
                          "width": .7, "feed": 75, "plunge": 12,
                          "power": 700})
-        self.assertEqual(program["max_feed"], 75)
+        self.assertEqual(program["max_feed"], 100)
+        self.assertTrue(any("F75G1" in row["code"] for row in program["lines"]))
         self.assertEqual(program["max_power"], 700)
         self.assertTrue(program["compensated"])
         self.assertIsNone(program["tool_geometry"]["correction"])
@@ -182,7 +183,7 @@ class CalibrationTests(unittest.TestCase):
         points = []
         for line in program["lines"]:
             words = dict(WORD.findall(line["code"]))
-            if words.get("G") == "1":
+            if words.get("G") == "1" and "Z" in words:
                 x, y, z = [float(words[axis]) for axis in "XYZ"]
                 local_depth = z - .01 * (x - 2) - .02 * (y - 3)
                 if abs(local_depth + .1) < .0002 and y > 5:

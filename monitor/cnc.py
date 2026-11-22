@@ -10,6 +10,7 @@ import threading
 import time
 from monitor.jobs import JobRunner, parse_program
 from monitor.probes import ZProbe
+from monitor.probe_settings import ProbeSettings
 from monitor.surfaces import SurfaceScan
 from monitor.compensation import compensate_program, live_offset
 from monitor.feed import with_xy_feed
@@ -93,6 +94,8 @@ class Controller:
         self.last_probe = self.probe
         self.probe_tested = False
         self.calibration = Calibration(profile_path)
+        self.probe_settings = ProbeSettings(
+            self.calibration.profile_path.with_name("probe-settings.json"))
         self.project_cycle = ProjectCycle()
 
     def _close(self, error):
@@ -256,6 +259,7 @@ class Controller:
                 ),
                 "probe_tested": self.probe_tested,
                 "probe_inverted": inverted,
+                "probe_settings": self.probe_settings.status(),
                 "z_probe": self.last_probe.status(),
                 "surface_map": self.surface.status(),
                 "jog_limits_mm": JOG_LIMITS_MM.copy(),
@@ -323,6 +327,21 @@ class Controller:
                 "job_pause", "job_resume", "job_stop", "job_heartbeat"
             ):
                 raise ValueError("Próba aktywna — użyj Pauzy lub Stop.")
+            if action == "probe_settings_save":
+                if (self.project_cycle.active() or self.jobs.active()
+                        or (self.calibration.cycle or {}).get("active")
+                        or (self.port is not None and
+                            (self.report_time is None or time.monotonic() - self.report_time >= 2
+                             or not self.report or self.report["state"] != "Idle"))):
+                    raise ValueError("Zapis ustawień sondowania wymaga bezczynnej frezarki.")
+                before = self.probe_settings.status()["revision"]
+                saved = self.probe_settings.save(payload)
+                if saved["revision"] != before:
+                    reason = "Zmieniono ustawienia sondowania i przejazdów."
+                    self.surface.invalidate(reason)
+                    self.calibration.invalidate(reason)
+                    self.probe.completed_job_id = None
+                return saved
             if action in ("probe_start", "surface_start", "job_start"):
                 if not self.jobs.active():
                     self.check_project_datum()
@@ -340,9 +359,10 @@ class Controller:
                     return store.create(payload)
                 if action == "profile_update":
                     result = store.update(payload)
-                    self.surface.invalidate("Zmieniono parametry profilu.")
-                    if self.calibration.mode == "profile_test":
-                        self.calibration.invalidate("Zmieniono profil testu.")
+                    if result["fingerprint"] != payload.get("profile_fingerprint"):
+                        self.surface.invalidate("Zmieniono parametry profilu.")
+                        if self.calibration.mode == "profile_test":
+                            self.calibration.invalidate("Zmieniono profil testu.")
                     return result
                 if action == "profile_delete":
                     target = next((item for item in store.data["profiles"]
@@ -496,6 +516,9 @@ class Controller:
                     raise ValueError("Połącz CNC; zakończ poprzednie zadanie.")
                 if payload.get("confirmed") is not True:
                     raise ValueError("Wymagane potwierdzenie operatora.")
+                if self.jobs.program is None or payload.get("job_id") != self.jobs.job_id:
+                    raise ValueError("Plik się zmienił — odśwież podgląd.")
+                travel = self.probe_settings.snapshot(payload)
                 flow = self.jobs.program.get("pcb_flow")
                 if flow:
                     if flow.get("padTrimReviewId") and flow.get("padTrimAcceptedId") != flow["padTrimReviewId"]:
@@ -570,6 +593,7 @@ class Controller:
                     execution = with_xy_feed(
                         execution or self.jobs.program, payload["xy_feed"]
                     )
+                surface = None
                 if payload.get("surface_map_id") is not None:
                     surface = self.surface
                     if not surface.valid or surface.map_id != payload.get(
@@ -584,9 +608,10 @@ class Controller:
                     )):
                         surface.invalidate("Zero materiału zmieniło się.")
                         raise ValueError("Zero mapy zmieniło się.")
-                    execution = compensate_program(
-                        execution or self.jobs.program, surface
-                    )
+                execution = compensate_program(
+                    execution or self.jobs.program, surface, travel=travel,
+                    preserve_clearance=not flow,
+                )
                 if flow and flow["kind"] == "drilling":
                     # New profiles declare the entire tip overrun. Their user
                     # supplies the allowance; old recipes keep the prior gate.
