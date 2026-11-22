@@ -14,7 +14,8 @@ from monitor.jobs import parse_program
 OVERLAPS = (25, 50, 75)
 STRIP_WIDTHS = (.3, .5)
 FIELD_WIDTH = FIELD_HEIGHT = 5
-OCTAGON_DIAMETER = 1
+STRIP_LENGTH = 1.45
+MIN_STRIP_LENGTH = .8
 EDGE_MARGIN = .4
 MIN_SWEEP_GAP = .15
 CORNER_ZONE_MM = .5
@@ -48,59 +49,37 @@ def configuration(store, payload=None):
 
 
 def layout(config):
-    """Place the narrow strip beside the wide strip and octagon in 5 × 5 mm."""
+    """Place two horizontal strips above two vertical strips in 5 × 5 mm."""
     diameter = tool_diameter(config, config["depth"])
     radius = diameter / 2
     passes = config.get("passes", 1)
     overlap = config.get("overlap_percent", 0)
     step = diameter * (1 - overlap / 100) if passes == 2 else 0
     total = diameter + step
-    octagon_scale = 1 / math.cos(math.pi / 8)
-    outer_offset = radius + step
-    octagon_sweep_radius = OCTAGON_DIAMETER / 2 + outer_offset * octagon_scale + radius
-    narrow, wide = STRIP_WIDTHS
-    inside_width = FIELD_WIDTH - 2 * EDGE_MARGIN
-    inside_height = FIELD_HEIGHT - 2 * EDGE_MARGIN
-    right_width = inside_width - (narrow + 2 * total) - MIN_SWEEP_GAP
-    right_center = FIELD_WIDTH - EDGE_MARGIN - right_width / 2
-    narrow_length = min(3, inside_height - 2 * total)
-    wide_length = min(3, right_width - 2 * total)
-    octagon_room = min(right_width, inside_height - (wide + 2 * total) - MIN_SWEEP_GAP)
-    if min(narrow_length, wide_length) < 1 or 2 * octagon_sweep_radius > octagon_room:
+    cell = (FIELD_WIDTH - 2 * EDGE_MARGIN - MIN_SWEEP_GAP) / 2
+    length = min(STRIP_LENGTH, cell - 2 * total)
+    if length < MIN_STRIP_LENGTH:
         raise ValueError("Rowki nie mieszczą się w polu 5 × 5 mm z wymaganym odstępem. "
                          "Wybierz jeden przejazd, większą zakładkę lub węższy rowek.")
     offsets = [radius + lane * step for lane in range(passes)]
     shapes = []
-    left = EDGE_MARGIN + total
-    right = right_center - wide_length / 2
-    strips = (
-        (narrow, narrow_length, left, (FIELD_HEIGHT - narrow_length) / 2, narrow, narrow_length),
-        (wide, wide_length, right, EDGE_MARGIN + total, wide_length, wide),
-    )
-    for strip_width, length, x, y, dx, dy in strips:
-        copper = [[x, y], [x + dx, y], [x + dx, y + dy], [x, y + dy]]
-        paths = [[[x - offset, y - offset],
-                  [x + dx + offset, y - offset],
-                  [x + dx + offset, y + dy + offset],
-                  [x - offset, y + dy + offset]]
-                 for offset in offsets]
-        shapes.append({"kind": "strip", "width": strip_width, "length": length,
-                       "copper": copper, "paths": paths, "path": paths[0]})
-    centre = (right_center, FIELD_HEIGHT - EDGE_MARGIN - octagon_sweep_radius)
-    directions = [(math.cos(index * math.pi / 4), math.sin(index * math.pi / 4))
-                  for index in range(8)]
-    radii = [OCTAGON_DIAMETER / 2] + [
-        OCTAGON_DIAMETER / 2 + offset * octagon_scale for offset in offsets
-    ]
-    copper, *paths = [
-        [[centre[0] + distance * dx, centre[1] + distance * dy] for dx, dy in directions]
-        for distance in radii
-    ]
-    shapes.append({"kind": "octagon", "diameter": OCTAGON_DIAMETER,
-                   "copper": copper, "paths": paths, "path": paths[0]})
+    near = EDGE_MARGIN + cell / 2
+    for orientation, cy in (("horizontal", FIELD_HEIGHT - near), ("vertical", near)):
+        for width, cx in zip(STRIP_WIDTHS, (near, FIELD_WIDTH - near)):
+            dx, dy = (length, width) if orientation == "horizontal" else (width, length)
+            x, y = cx - dx / 2, cy - dy / 2
+            copper = [[x, y], [x + dx, y], [x + dx, y + dy], [x, y + dy]]
+            paths = [[[x - offset, y - offset],
+                      [x + dx + offset, y - offset],
+                      [x + dx + offset, y + dy + offset],
+                      [x - offset, y + dy + offset]]
+                     for offset in offsets]
+            shapes.append({"kind": "strip", "orientation": orientation,
+                           "width": width, "length": length, "copper": copper,
+                           "paths": paths, "path": paths[0]})
     return {"width": FIELD_WIDTH, "height": FIELD_HEIGHT, "diameter": diameter,
             "margin_mm": EDGE_MARGIN, "passes": passes, "overlap_percent": overlap,
-            "step_mm": step, "total_mm": total, "strip_gap_mm": right - left - narrow,
+            "step_mm": step, "total_mm": total, "strip_gap_mm": cell + MIN_SWEEP_GAP - length,
             "diameter_source": "calibrated" if config.get("_calibration") else "nominal",
             "shapes": shapes,
             "settings": {**settings(config), "corner_feed": config.get("corner_feed")},
@@ -167,10 +146,10 @@ def program(origin, config):
         "diameter_mm": plan["diameter"], "depth_mm": config["depth"],
         "strip_width_mm": STRIP_WIDTHS[-1],
         "centreline_spacing_mm": STRIP_WIDTHS[-1] + plan["diameter"],
-        "strip_widths": [shape["width"] for shape in plan["shapes"]
-                         if shape["kind"] == "strip"],
-        "strip_lengths_mm": [shape["length"] for shape in plan["shapes"]
-                             if shape["kind"] == "strip"],
+        "strip_widths": list(STRIP_WIDTHS),
+        "strips": [{key: shape[key] for key in ("orientation", "width", "length")}
+                   for shape in plan["shapes"]],
+        "strip_lengths_mm": [shape["length"] for shape in plan["shapes"]],
         "strip_gap_mm": plan["strip_gap_mm"],
         "passes": plan["passes"], "overlap_percent": plan["overlap_percent"],
         "step_mm": plan["step_mm"],

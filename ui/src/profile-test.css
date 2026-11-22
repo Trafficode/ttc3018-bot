@@ -3,4 +3,10 @@
 .profile-test-preview figcaption span,.profile-test-preview small{font-size:10px;color:var(--muted);line-height:1.5}
 .profile-test-preview svg{display:block;width:100%;max-height:240px;height:auto;overflow:visible}
 .profile-test-preview svg text{font:11px ui-monospace,monospace;fill:#25333f;paint-order:stroke;stroke:#f8f8f5;stroke-width:.5px}
+.profile-test-legend{display:flex;justify-content:center;flex-wrap:wrap;gap:4px 12px}
+.profile-test-legend small{display:inline-flex;align-items:center;gap:5px}
+.profile-test-legend i{display:inline-block;width:8px;height:8px}
+.profile-test-legend .copper-key{background:#ce7836}
+.profile-test-legend .groove-key{background:#ddd9d3}
+.profile-test-legend .probe-key{border:1px solid #53616d;border-radius:50%;background:#fff}
 @media(max-width:760px){.profile-test-preview svg{max-height:260px}.compact .tabs:has(#tab-profiles) button{flex-direction:column;gap:2px;font-size:9px;padding:4px 3px;min-width:0;flex:1}.compact .tabs:has(#tab-profiles) svg{width:15px;height:15px}.compact .tabs{width:100%}}

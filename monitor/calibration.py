@@ -177,8 +177,9 @@ class CalibrationScan(SurfaceScan):
         """Reference touch first, then the profile grid; preserve global XY."""
         if controller.offset is None:
             raise ValueError("Brak aktualnego WCO.")
-        result = ZProbe.start(self, controller, {
-            **payload, "distance": MAX_PROBE_TRAVEL})
+        # ZProbe applies the workstation reference limit. Grid descents have their own cap.
+        result = ZProbe.start(self, controller, {**payload, "distance": 10},
+                              recoverable_miss=True)
         self.auto_reference = True
         self.kind = "profile_test"
         self.map_id = secrets.token_hex(12)

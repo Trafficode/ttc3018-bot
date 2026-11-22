@@ -2,7 +2,7 @@ import {useEffect, useState} from 'preact/hooks';
 import {IconCheck, IconChevronDown, IconChevronRight, IconPlus} from '@tabler/icons-preact';
 import {ProfileSettings, defaultProfile, grooveMm} from './Profiles.jsx';
 import {AppSelect} from './AppSelect.jsx';
-import {probeDistanceLimit,probeNumber} from './probe-settings.js';
+import {probeDistanceLimit,probeNumber,probeSettings} from './probe-settings.js';
 import './profile-test.css';
 
 const size = value => Number(value).toLocaleString('pl-PL',{maximumFractionDigits:2});
@@ -11,29 +11,42 @@ const cycleLabels = {probing:'Pomiar Z',cutting:'Frezowanie wzoru',completed:'Te
 const overlapChoices = [25,50,75].map(value=>({value:String(value),label:`${value}%`}));
 
 function TestPreview({plan,map,origin}) {
-  const scale=176/plan.height;
-  const left=54;
-  const bottom=12+plan.height*scale;
+  const scale=200/plan.height;
+  const left=34;
+  const top=28;
+  const bottom=top+plan.height*scale;
   const x=value=>left+value*scale;
   const y=value=>bottom-value*scale;
+  const right=x(plan.width), midX=(left+right)/2, midY=(top+bottom)/2;
   const points=list=>list.map(([a,b])=>`${x(a)},${y(b)}`).join(' ');
+  const labelY=orientation=>y(Math.min(...plan.shapes
+    .filter(shape=>shape.orientation===orientation).map(shape=>shape.copper[0][1]))-plan.total_mm)+13;
   return <figure class="profile-test-preview"><figcaption><strong>Wzór testowy</strong><span>{map?.samples?.length||0} / 9 punktów Z</span></figcaption>
-    <svg viewBox={`0 0 ${x(plan.width)+125} ${bottom+13}`} role="img" aria-label="Dwa paski miedzi 0,3 i 0,5 mm, ośmiokąt 1 mm i siatka pomiaru Z 3 × 3">
-      <rect x={x(0)} y={y(plan.height)} width={plan.width*scale} height={plan.height*scale} rx="2" fill="#f0eadb" stroke="#bdb29e"/>
+    <svg viewBox={`0 0 ${right+27} ${bottom+21}`} role="img" aria-label="Dwa paski poziome u góry i dwa pionowe u dołu, w obu kierunkach 0,3 i 0,5 mm. Siatka Z 3 × 3.">
+      <rect x={left} y={top} width={plan.width*scale} height={plan.height*scale} fill="#faf7f1" stroke="#bdb29e"/>
+      <path d={`M${midX} ${top}V${bottom} M${left} ${midY}H${right}`} fill="none" stroke="#bdb29e" stroke-dasharray="3 4"/>
+      <path d={`M${left} 14H${midX-25} M${midX+25} 14H${right} M${left} 10V18 M${right} 10V18 M19 ${top}V${midY-25} M19 ${midY+25}V${bottom} M15 ${top}H23 M15 ${bottom}H23`} fill="none" stroke="#53616d"/>
+      <text x={midX} y="18" text-anchor="middle">{size(plan.width)} mm</text>
+      <text x="23" y={midY} transform={`rotate(-90 23 ${midY})`} text-anchor="middle">{size(plan.height)} mm</text>
       {plan.shapes.map((shape,index)=><g key={index}>
-        {[...(shape.paths||[shape.path])].reverse().map((path,lane)=><polygon key={lane} points={points(path)} fill="none" stroke={lane?'#f6efd8':'#fbf8ed'} stroke-width={plan.diameter*scale} stroke-linejoin="round"/>)}
-        <polygon points={points(shape.copper)} fill="#edbb80" stroke="#aa671f" stroke-width="1"/>
+        {[...shape.paths].reverse().map((path,lane)=><polygon key={lane} points={points(path)} fill="none" stroke="#ddd9d3" stroke-width={plan.diameter*scale} stroke-linejoin="round"/>)}
+        <polygon points={points(shape.copper)} fill="#ce7836"/>
         {shape.paths?.[1]&&<polygon points={points(shape.paths[1])} fill="none" stroke="#9b5a1d" stroke-width="1.2" stroke-dasharray="4 3"/>}
-        <text x={x(plan.width)+30} y={y(shape.copper.reduce((sum,point)=>sum+point[1],0)/shape.copper.length)}
-          dominant-baseline="middle">{shape.kind==='strip'?`Pasek ${size(shape.width)} mm`:`Ośmiokąt ${size(shape.diameter)} mm`}</text>
+        <text x={x((shape.copper[0][0]+shape.copper[2][0])/2)}
+          y={labelY(shape.orientation)} text-anchor="middle">{size(shape.width)} mm</text>
       </g>)}
       {[0,1,2].flatMap(row=>[0,1,2].map(column=>{
         const a=column*plan.width/2,b=row*plan.height/2;
         const sample=map?.samples?.find(point=>Math.abs(point.x-(origin?.[0]+a))<.001&&Math.abs(point.y-(origin?.[1]+b))<.001);
         return <g key={`${row}-${column}`}><circle cx={x(a)} cy={y(b)} r="3" fill={sample?'#287b5c':'#fff'} stroke="#53616d"/>
-          {sample&&<text x={x(a)+(column===0?5:0)} y={y(b)+(row===2?13:-5)} text-anchor={column===0?'start':'middle'}>{`${sample.z>=0?'+':''}${sample.z.toFixed(3)}`}</text>}</g>;
+          {sample&&<text x={x(a)} y={y(b)+(row===1?-6:14)} text-anchor="middle">{`${sample.z>=0?'+':''}${sample.z.toFixed(3)}`}</text>}</g>;
       }))}
-    </svg><small>Pole {size(plan.width)} × {size(plan.height)} mm · margines {size(plan.margin_mm)} mm</small>
+    </svg>
+    <div class="profile-test-legend">
+      <small><i class="copper-key" aria-hidden="true"/>Pasek miedzi</small>
+      <small><i class="groove-key" aria-hidden="true"/>Rowek</small>
+      <small><i class="probe-key" aria-hidden="true"/>Punkt Z</small>
+    </div>
   </figure>;
 }
 
@@ -52,21 +65,27 @@ function TestValue({label,value}) {
 }
 
 const methodLabel=method=>method==='groove'?'z rowka':'z paska';
+const stripLabel=({orientation,width})=>
+  `${orientation==='horizontal'?'Poziomy':orientation==='vertical'?'Pionowy':'Pasek'} ${size(width)} mm`;
 const calibratedTrial=profile=>profile.observations?.findLast(row=>
   row.mode==='profile_test'&&(row.calibration_method||row.groove_measurement));
 
 function CalibrationForm({trial,profile,controller,locked}) {
-  const [sample,setSample]=useState(()=>String(trial?.geometry?.strip_widths?.at(-1)??''));
+  const geometry=trial?.geometry;
+  const choices=(geometry?.strips??geometry?.strip_widths?.map(width=>({width}))??[])
+    .map(item=>({...item,value:`${item.orientation??'legacy'}:${item.width}`,label:stripLabel(item)}));
+  const [sample,setSample]=useState(()=>
+    (choices.find(item=>item.orientation==='horizontal'&&item.width===.5)??choices.at(-1))?.value??'');
   const [method,setMethod]=useState('groove');
   const [acceptDifference,setAcceptDifference]=useState(false),[continuous,setContinuous]=useState(false);
   const [strip,setStrip]=useState(''),[groove,setGroove]=useState(''),[error,setError]=useState(''),[saving,setSaving]=useState(false);
-  const geometry=trial?.geometry;
   if(!geometry){
     const result=profile.model&&profile.depth!=null?profile.model.intercept_mm+profile.model.slope*profile.depth:null;
     const row=calibratedTrial(profile);
     if(row&&result!==null)return <div class="profile-calibrate">
       <div class="profile-calibrate-heading"><strong><IconCheck size={18} aria-hidden="true"/>
-        {row.calibration_method?`Kalibracja ${methodLabel(row.calibration_method)}`:'Potwierdzona pomiarem paska i rowka'}</strong></div>
+        {row.calibration_method?`Kalibracja ${methodLabel(row.calibration_method)}`:'Potwierdzona pomiarem paska i rowka'}</strong>
+        {row.strip_orientation&&<small>{stripLabel({orientation:row.strip_orientation,width:row.width})}</small>}</div>
       <div class="profile-measure-pair">
         {row.measured_width!=null&&<section><h4>Pasek miedzi</h4><TestValue label="Nominalny pasek" value={`${grooveMm(row.width)} mm`}/>
           <TestValue label="Zmierzony pasek" value={`${grooveMm(row.measured_width)} mm`}/></section>}
@@ -78,7 +97,8 @@ function CalibrationForm({trial,profile,controller,locked}) {
     return result===null?<p class="service-hint">Po zakończeniu testu wybierzesz pomiar paska albo rowka.</p>:
       <div class="profile-result"><strong>Szerokość skrawania · 1 przejazd: {grooveMm(result)} mm</strong><span>{profile.groove_verification?'Potwierdzona pomiarem':'Zapisany wynik · bez potwierdzenia pomiarem rowka'}</span></div>;
   }
-  const width=Number(sample);
+  const selected=choices.find(item=>item.value===sample);
+  const width=selected?.width;
   const validNumber=value=>value!==''&&Number(value)>=.01&&Number(value)<=3&&Math.abs(Number(value)*100-Math.round(Number(value)*100))<1e-7;
   const measured=Number(groove)-geometry.step_mm;
   const inferred=geometry.diameter_mm+width-Number(strip);
@@ -90,7 +110,7 @@ function CalibrationForm({trial,profile,controller,locked}) {
   const selectedInput=fromGroove?groove:strip;
   const otherInvalid=fromGroove?strip!==''&&!stripValid:groove!==''&&!grooveValid;
   const divergent=stripValid&&grooveValid&&Math.abs(measured-inferred)>.020000001;
-  const ready=selectedValid&&(!divergent||acceptDifference)&&(!needsContinuity||continuous);
+  const ready=selected&&selectedValid&&(!divergent||acceptDifference)&&(!needsContinuity||continuous);
   const disabled=locked||saving;
   function changed(){setAcceptDifference(false);setError('');}
   async function save(event){
@@ -102,6 +122,7 @@ function CalibrationForm({trial,profile,controller,locked}) {
         profile_id:profile.id,profile_fingerprint:profile.fingerprint,trial_id:trial.trial_id,
         calibration_method:method,accept_disagreement:divergent&&acceptDifference,
         groove_continuous:needsContinuity&&continuous,
+        ...(selected.orientation?{width,strip_orientation:selected.orientation}:{}),
         ...(stripValid?{width,measured_width:Number(strip)}:{}),
         ...(grooveValid?{measured_groove:Number(groove)}:{})})){
         setError(controller.profileError.value||'Nie zapisano kalibracji.');
@@ -111,7 +132,7 @@ function CalibrationForm({trial,profile,controller,locked}) {
   return <form class="profile-calibrate" noValidate onSubmit={save}>
     <div class="profile-calibrate-heading"><strong><IconCheck size={18} aria-hidden="true"/>Test zakończony</strong>
       <AppSelect id="profile-sample" label="Pasek do pomiaru" value={sample} disabled={disabled}
-        options={geometry.strip_widths.map(value=>({value:String(value),label:`Pasek ${grooveMm(value)} mm`}))}
+        options={choices}
         onChange={value=>{setSample(value);setStrip('');setGroove('');setContinuous(false);changed();}}/></div>
     <fieldset class="profile-methods">
       <legend>Kalibruj na podstawie</legend>
@@ -153,6 +174,7 @@ function CalibrationForm({trial,profile,controller,locked}) {
 }
 
 export function ProfilePanel({controller,cnc,ask,operationSelector}) {
+  const limits=probeSettings(cnc);
   const store=cnc.calibration_profiles;
   const selected=store?.selected||defaultProfile;
   const service=cnc.calibration||{};
@@ -211,7 +233,8 @@ export function ProfilePanel({controller,cnc,ask,operationSelector}) {
           {probePlan&&!probePlan.error&&<div class="profile-test-estimate">
             <strong>Rowek: {grooveMm(probePlan.diameter)} mm{probePlan.passes===2?` → ok. ${grooveMm(probePlan.total_mm)} mm`:''}</strong>
             <small>{probePlan.diameter_source==='calibrated'?'Z modelu kalibracji':'Z geometrii frezu'} · zagłębienie {size(probePlan.settings.depth)} mm</small>
-            <small>Posuw XY {size(probePlan.settings.feed)} · wejście Z {size(probePlan.settings.plunge)} mm/min · wrzeciono {size(probePlan.settings.power/10)}%</small>
+            <small>Posuw cięcia XY {size(probePlan.settings.feed)} · wejście Z {size(probePlan.settings.plunge)} mm/min · wrzeciono {size(probePlan.settings.power/10)}%</small>
+            <small>Przejazd nad materiałem {size(limits.xy_feed_mm_min)} mm/min · prześwit {probeNumber(limits.travel_clearance_mm)} mm</small>
             {probePlan.settings.corner_feed!=null&&probePlan.settings.corner_feed<probePlan.settings.feed&&
               <small>Posuw na zakrętach {size(probePlan.settings.corner_feed)} mm/min · {size(probePlan.corner_zone_mm)} mm przed i za zakrętem</small>}
             {probePlan.passes===2&&<small>Odstęp torów: {grooveMm(probePlan.step_mm)} mm. Drugi tor na zewnątrz.</small>}</div>}
@@ -227,7 +250,7 @@ export function ProfilePanel({controller,cnc,ask,operationSelector}) {
           </div>
         </div>
       </div>
-      <p class="service-hint">Ustaw frez nad świeżą miedzią. Limit zjazdu: {probeNumber(probeDistanceLimit(cnc,1.4))} mm. Poprowadź przewód sondy poza polem ruchu. Zero X/Y projektu pozostaje zachowane.</p>
+      <p class="service-hint">Ustaw frez nad świeżą miedzią. Szukanie zera Z do {probeNumber(limits.max_descent_mm)} mm. Sondowanie punktu siatki do {probeNumber(probeDistanceLimit(cnc,1.4))} mm. Poprowadź przewód sondy poza polem ruchu. Zero X/Y projektu pozostaje zachowane.</p>
     </ProfileStep>
     <ProfileStep number={3} title="Kalibracja" open={!cycleActive&&step===3} disabled={creating||dirty||cycleActive} onToggle={()=>choose(3)}
       summary={trial?'Do wpisania pomiar':savedTrial?.calibration_method?`Zapisana · ${methodLabel(savedTrial.calibration_method)}`:proof?'Zapisana · potwierdzona':selected.model?'Zapisana · bez potwierdzenia':'Brak danych'}>

@@ -5,7 +5,7 @@ import './probe-settings.css';
 const groups = [
   ['Sondowanie Z', [
     ['max_descent_mm','max','Maksymalny zjazd Z','mm',.1,10,'any',
-      'Limit szukania styku. Pojedynczy pomiar siatki i test profilu mają limit 1,4 mm.'],
+      'Limit szukania zera Z, także w teście profilu. Pomiar pojedynczego punktu siatki jest ograniczony do 1,4 mm.'],
     ['z_feed_mm_min','z-feed','Posuw sondowania Z','mm/min',10,60,1,
       'Opuszczanie sondy przy pomiarze zera i punktów siatki.'],
   ]],

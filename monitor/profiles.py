@@ -138,6 +138,8 @@ def groove_evidence(profile):
                          "depth": row["depth"], "width": row["width"],
                          **({"measured_width": row["measured_width"]}
                             if "measured_width" in row else {}),
+                         **({"strip_orientation": row["strip_orientation"]}
+                            if "strip_orientation" in row else {}),
                          **({"corner_feed_mm_min": row["geometry"]["corner_feed_mm_min"]}
                             if "corner_feed_mm_min" in row["geometry"] else {}),
                          "used_diameter": row["geometry"]["diameter_mm"]}
@@ -497,10 +499,19 @@ class ProfileStore:
                 value * 100, round(value * 100), rel_tol=0, abs_tol=1e-7
             ):
                 raise ValueError("Wpisz pomiar z krokiem 0,01 mm.")
+        width = payload.get("width")
+        selection = {}
+        if "strips" in geometry:
+            orientation = payload.get("strip_orientation")
+            if not finite(width) or not any(
+                item["width"] == width and item["orientation"] == orientation
+                for item in geometry["strips"]
+            ):
+                raise ValueError("Wybierz szerokość i kierunek paska z wykonanego testu.")
+            selection = {"width": width, "strip_orientation": orientation}
         strip_data, groove_data = {}, {}
         inferred = measured_single = None
         if strip is not None:
-            width = payload.get("width")
             if not finite(width) or width not in geometry["strip_widths"]:
                 raise ValueError("Wybierz pasek z wykonanego testu.")
             strip_data = {"width": width, "measured_width": strip}
@@ -517,9 +528,9 @@ class ProfileStore:
         ) and (legacy or payload.get("accept_disagreement") is not True):
             raise ValueError("Pomiary są rozbieżne. Potwierdź użycie wybranej metody.")
         if legacy:
-            observation = {**trial, **strip_data, **groove_data}
+            observation = {**trial, **selection, **strip_data, **groove_data}
         else:
-            observation = {**trial, "calibration_method": method,
+            observation = {**trial, **selection, "calibration_method": method,
                            **(strip_data if method == "strip" else groove_data)}
         profile = {"name": previous["name"], **fit_profile([observation]),
                    "observations": [observation], "depth": trial["depth"]}

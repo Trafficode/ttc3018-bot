@@ -56,9 +56,11 @@ NC still uses the legacy Default workflow.
 
 ## Test pattern
 
-The 5 × 5 mm test contains a vertical 0.3 mm copper strip, a horizontal
-0.5 mm strip and one copper octagon with a 1 mm opposite-vertex diameter.
-The strip length is up to 3 mm, with at least 0.4 mm around the predicted sweep.
+The 5 × 5 mm test has two horizontal copper strips at the top and two vertical
+strips at the bottom. Each row has a 0.3 mm strip on the left and a 0.5 mm strip
+on the right. All strips are 1.45 mm long with a 0.18 mm cutting width and two
+passes at 50% overlap. Wider sweeps can shorten the strips to 0.8 mm to keep 0.15 mm between
+sweeps and 0.4 mm between the sweeps and the field edge.
 Only closed isolation contours are generated, using G1 straight segments.
 Unused copper is retained. There are no drilling or laminate cut-through moves.
 
@@ -76,12 +78,14 @@ not rewrite G54 X/Y or automatically select a subsequent field.
 
 1. Select the saved V-bit profile and inspect its fixed conditions and pattern.
 2. Jog above fresh copper. Current X/Y is the local lower-left origin of the
-   test field. Place the tip within the 1.4 mm initial contact search distance;
-   no prior manual Z zero is required. Verify probe contact and release.
+   test field. Place the tip above the surface within the search distance in
+   **Ustawienia stanowiska**. Verify probe contact and release.
 3. Press **Uruchom test profilu** and confirm the entire cycle once. The RPi
-   references G54 Z using a bounded F20 contact, retracts to Z=1, maps the 3×3
-   field, then automatically starts exactly one compensated pattern cut.
-   G54 X/Y is preserved. Every mapped descent remains bounded to 1.4 mm.
+   references G54 Z using the configured search distance and probe feed,
+   retracts to the configured clearance and maps the 3×3 field. A complete
+   map authorizes exactly one compensated pattern cut. G54 X/Y is preserved.
+   The contact search at each grid point is capped at 1.4 mm.
+   A verified no-contact outcome ends the test with the connection available.
 4. Monitor reference, mapping and cutting in the same view. Stop is available
    throughout. A failed/stopped scan, stale owner heartbeat, profile/offset
    drift or invalid map prevents transition to cutting. There is no automatic

@@ -218,13 +218,14 @@ class ProfileTestTests(unittest.TestCase):
     def test_profile_test_uses_shared_probe_settings_without_changing_cut_feed(self):
         saved = self.cnc.action("probe_settings_save", {
             "revision": self.cnc.probe_settings.status()["revision"],
-            "max_descent_mm": 1.2, "xy_feed_mm_min": 75,
+            "max_descent_mm": 3.2, "xy_feed_mm_min": 75,
             "travel_clearance_mm": 4, "z_feed_mm_min": 30,
         })
+        self.cnc._accept_status("<Idle|MPos:12,23,7.4|WCO:10,20,5>")
         self.complete_cycle_scan(probe_settings_revision=saved["revision"])
-        descents = [line for line in self.cnc.port.writes if b"G38.2" in line]
+        descents = [line for line in self.cnc.port.writes if b"G38.3" in line]
         travels = [line for line in self.cnc.port.writes if line.startswith(b"G1X")]
-        self.assertEqual(descents, [b"G90G38.2Z-0.2000F30\n"] * 10)
+        self.assertEqual(descents, [b"G90G38.3Z-0.8000F30\n"] + [b"G90G38.3Z-0.4000F30\n"] * 9)
         self.assertEqual(len(travels), 9)
         self.assertTrue(all(line.endswith(b"F75\n") for line in travels))
         self.advance_cycle()
@@ -233,9 +234,25 @@ class ProfileTestTests(unittest.TestCase):
         plane = 4 + max(point["z"] for point in self.cnc.calibration.scan.samples)
         xy_travels = [index for index, row in enumerate(program_lines)
                       if row["code"].startswith("G1X") and row["code"].endswith("F75")]
-        self.assertEqual(len(xy_travels), 3)
+        self.assertEqual(len(xy_travels), 4)
         for index in xy_travels:
             self.assertEqual(program_lines[index - 1]["code"], f"G0Z{plane:.4f}")
+
+    def test_missing_reference_contact_does_not_start_cut_or_drop_connection(self):
+        self.cnc.action("probe_settings_save", {
+            **self.cnc.probe_settings.status(), "max_descent_mm": 2.6,
+        })
+        self.action("profile_test_start", self.payload(fixed_probe=True))
+        self.receive("[PRB:12,23,3.4:0]\nok\n<Idle|MPos:12,23,3.4|WCO:10,20,5>\n")
+        self.advance_cycle()
+        calibration = self.cnc.calibration
+        self.assertEqual(calibration.cycle["phase"], "failed")
+        self.assertIn("PROBE_NO_CONTACT", calibration.cycle["error"])
+        self.assertFalse(calibration.scan.valid)
+        self.assertFalse(calibration.runner.active())
+        self.assertIsNotNone(self.cnc.port)
+        self.assertEqual(self.cnc.offset, [10, 20, 5])
+        self.assertFalse(any(b"G10" in line or b"M3" in line for line in self.cnc.port.writes))
 
     def test_double_pass_cycle_uses_both_outward_paths_and_records_exact_trial(self):
         profile = self.store.create({"source": "settings", "name": "Nowy",
@@ -252,7 +269,7 @@ class ProfileTestTests(unittest.TestCase):
             self.assertGreater(len(outer), 0)
             self.assertAlmostEqual(
                 min(point[0] for point in inner) - min(point[0] for point in outer),
-                step if shape["kind"] == "strip" else step / math.cos(math.pi / 8))
+                step)
             self.assertTrue(all(step <= x <= plan["width"] - step
                                 and step <= y <= plan["height"] - step
                                 for x, y in outer))
@@ -261,7 +278,7 @@ class ProfileTestTests(unittest.TestCase):
         calibration = self.cnc.calibration
         self.assertEqual(calibration.cycle["phase"], "cutting")
         raw = program(calibration.origin, config)
-        self.assertEqual(sum(row["code"].startswith("G1Z") for row in raw["lines"]), 6)
+        self.assertEqual(sum(row["code"].startswith("G1Z") for row in raw["lines"]), 8)
         self.assertEqual(calibration.runner.program["tool_geometry"], raw["tool_geometry"])
         self.assertFalse(calibration.repeat_status()["available"])
         calibration.runner.state = "completed"
@@ -270,6 +287,10 @@ class ProfileTestTests(unittest.TestCase):
         self.assertEqual(trial["profile"], {"id": profile["id"], "fingerprint": profile["fingerprint"]})
         self.assertAlmostEqual(trial["geometry"]["step_mm"], step)
         self.assertEqual(trial["geometry"]["strip_widths"], [.3, .5])
+        self.assertEqual([(strip["orientation"], strip["width"])
+                          for strip in trial["geometry"]["strips"]],
+                         [("horizontal", .3), ("horizontal", .5),
+                          ("vertical", .3), ("vertical", .5)])
 
     def test_rejects_invalid_overlap_before_probe(self):
         for options in ({"passes": 1, "overlap_percent": 50},
@@ -305,37 +326,34 @@ class ProfileTestTests(unittest.TestCase):
         for tip in (.1, .3, .5):
             config["tip"] = tip
             plan = layout(config)
-            self.assertEqual([shape["kind"] for shape in plan["shapes"]],
-                             ["strip", "strip", "octagon"])
-            self.assertEqual([shape["width"] for shape in plan["shapes"][:2]], [.3, .5])
-            self.assertEqual(plan["shapes"][2]["diameter"], 1)
+            self.assertEqual([(shape["kind"], shape["orientation"], shape["width"])
+                              for shape in plan["shapes"]],
+                             [("strip", "horizontal", .3), ("strip", "horizontal", .5),
+                              ("strip", "vertical", .3), ("strip", "vertical", .5)])
             self.assertEqual((plan["width"], plan["height"]), (5, 5))
             r = plan["diameter"]/2
-            points = [p for s in plan["shapes"] for p in s["path"]]
-            self.assertAlmostEqual(min(p[1] for p in points)-r, .4)
-            self.assertAlmostEqual(plan["height"]-max(p[1] for p in points)-r, .4)
-            for shape in plan["shapes"]:
+            self.assertEqual(len({shape["length"] for shape in plan["shapes"]}), 1)
+            for index, shape in enumerate(plan["shapes"]):
                 for x, y in shape["path"]:
-                    self.assertGreaterEqual(x-r, 0)
-                    self.assertGreaterEqual(y-r, 0)
-                    self.assertLessEqual(x+r, plan["width"])
-                    self.assertLessEqual(y+r, plan["height"])
+                    self.assertGreaterEqual(x-r, .4-1e-9)
+                    self.assertGreaterEqual(y-r, .4-1e-9)
+                    self.assertLessEqual(x+r, plan["width"]-.4+1e-9)
+                    self.assertLessEqual(y+r, plan["height"]-.4+1e-9)
+                    self.assertEqual(x-r > 2.5, index % 2 == 1)
+                    self.assertEqual(y-r > 2.5, index < 2)
                 points = shape["copper"]
-                if shape["kind"] == "strip":
-                    sides = (points[1][0] - points[0][0], points[2][1] - points[0][1])
-                    self.assertAlmostEqual(max(sides), shape["length"])
-                    self.assertGreaterEqual(shape["length"], 1)
-                    self.assertLessEqual(shape["length"], 3)
-                    self.assertAlmostEqual(min(sides), shape["width"])
-                    path = shape["path"]
-                    self.assertAlmostEqual(min(path[2][i] - path[0][i] for i in (0, 1)) - 2*r,
-                                           shape["width"])
-                else:
-                    self.assertAlmostEqual(math.dist(points[0], points[4]),
-                                           shape["diameter"])
+                dx, dy = points[1][0] - points[0][0], points[2][1] - points[0][1]
+                length, width = (dx, dy) if index < 2 else (dy, dx)
+                self.assertAlmostEqual(length, shape["length"])
+                self.assertGreaterEqual(length, .8-1e-9)
+                self.assertLessEqual(length, 1.45+1e-9)
+                self.assertAlmostEqual(width, shape["width"])
+                path = shape["path"]
+                self.assertAlmostEqual(min(path[2][i] - path[0][i] for i in (0, 1)) - 2*r,
+                                       shape["width"])
             codes = [p["code"] for p in program([2,3],config)["lines"]]
             self.assertFalse(any("G2" in c and "G21" not in c for c in codes))
-            self.assertEqual(sum(c.startswith("G1Z") for c in codes), 3)
+            self.assertEqual(sum(c.startswith("G1Z") for c in codes), 4)
 
     def test_two_pass_sweeps_fit_the_fixed_field_and_stay_separate(self):
         config = configuration(self.store)
@@ -453,7 +471,7 @@ class ProfileTestTests(unittest.TestCase):
                 self.assertAlmostEqual(values["Z"]-local,-.05,places=3)
                 approaches.append(previous["Z"])
             previous = values
-        self.assertEqual(len(approaches),3)
+        self.assertEqual(len(approaches),4)
         self.assertGreater(max(approaches)-min(approaches),.001)
 
     def test_finish_reuses_exact_program_and_records_no_new_sample(self):

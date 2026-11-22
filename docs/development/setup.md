@@ -92,8 +92,9 @@ are stored in `~/.local/share/bark-beetle/probe-settings.json`.
 The panel creates this file on the first save; no manual installation is
 required. Saving requires a free workstation and issues no machine commands.
 
-The distance acts as a ceiling. The shorter limits for profile tests,
-surface-grid descents and explicitly shorter manual moves still apply. The
+The distance acts as a ceiling for the first Z search, including profile
+tests. Surface-grid descents and explicitly shorter manual moves have their
+own shorter limits. The
 grid’s XY travel uses the saved clearance above reference Z, followed by a
 vertical approach to 1 mm and a probe of up to 1.4 mm. The contact depth
 uses the measured reference. Check clamps and copper flatness before starting.

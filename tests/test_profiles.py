@@ -146,17 +146,41 @@ class ProfileTests(unittest.TestCase):
             "profile_fingerprint": updated["fingerprint"]})
         self.assertNotIn("groove_verification", unconfirmed)
 
-    def profile_test_measurement(self, step=0):
+    def profile_test_measurement(self, step=0, strips=None):
         draft = self.store.create({**CONFIG, "source": "settings", "name": "Próba"})
         self.store.select(draft["id"])
+        geometry = {"diameter_mm": .154, "step_mm": step, "strip_widths": [.3, .5, 1]}
+        if strips is not None:
+            geometry.update(strips=strips, strip_widths=sorted({row["width"] for row in strips}))
         self.store.record({
             **CONFIG, "trial_id": "measurement", "mode": "profile_test", "state": "completed",
             "profile": {"id": draft["id"], "fingerprint": draft["fingerprint"]},
-            "geometry": {"diameter_mm": .154, "step_mm": step, "strip_widths": [.3, .5, 1]},
+            "geometry": geometry,
         })
         return {"source": "profile_test", "profile_id": draft["id"],
                 "profile_fingerprint": draft["fingerprint"], "trial_id": "measurement",
                 "confirmed": True}
+
+    def test_four_strip_trial_requires_and_preserves_the_measured_orientation(self):
+        strips = [{"orientation": direction, "width": width, "length": 1.45}
+                  for direction in ("horizontal", "vertical") for width in (.3, .5)]
+        for method, orientation, width, measurement, expected in (
+            ("strip", "vertical", .3, {"measured_width": .29}, .164),
+            ("groove", "horizontal", .5, {"measured_groove": .15}, .15),
+        ):
+            with self.subTest(method=method):
+                payload = {**self.profile_test_measurement(strips=strips), **measurement,
+                           "calibration_method": method, "width": width}
+                for invalid in ({}, {"strip_orientation": "diagonal"},
+                                {"strip_orientation": orientation, "width": 1}):
+                    with self.assertRaisesRegex(ValueError, "szerokość i kierunek"):
+                        self.store.update({**payload, **invalid})
+                saved = self.store.update({**payload, "strip_orientation": orientation})
+                observation = saved["observations"][0]
+                self.assertEqual(observation["width"], width)
+                self.assertEqual(observation["strip_orientation"], orientation)
+                self.assertAlmostEqual(groove_width(saved), expected)
+                self.assertEqual(ProfileStore(self.path).active, saved)
 
     def test_strip_alone_sets_width_without_a_groove_attestation(self):
         payload = self.profile_test_measurement()
